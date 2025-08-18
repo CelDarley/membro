@@ -14,12 +14,24 @@ const error = ref('')
 const showPassword = ref(false)
 const requires2FA = ref(false)
 const twoFactorCode = ref('')
+const me = ref<any>(null)
 
 function setAuthHeader() {
   if (token.value) api.defaults.headers.common.Authorization = `Bearer ${token.value}`
   else delete api.defaults.headers.common.Authorization
 }
 setAuthHeader()
+
+async function loadMe() {
+  try {
+    const { data } = await api.get('/auth/me')
+    me.value = data.user
+  } catch {}
+}
+
+if (token.value) {
+  loadMe()
+}
 
 async function login() {
   loading.value = true
@@ -34,6 +46,7 @@ async function login() {
     token.value = data.token
     localStorage.setItem('token', token.value!)
     setAuthHeader()
+    await loadMe()
     router.push('/')
   } catch (e: any) {
     error.value = e?.response?.data?.message || 'Falha no login'
@@ -53,6 +66,7 @@ async function verify2FA() {
     setAuthHeader()
     requires2FA.value = false
     twoFactorCode.value = ''
+    await loadMe()
     router.push('/')
   } catch (e: any) {
     error.value = e?.response?.data?.message || 'Código inválido'
@@ -62,9 +76,11 @@ async function verify2FA() {
 }
 
 const isLogged = computed(() => !!token.value)
+const isAdmin = computed(() => me.value?.role === 'admin')
 
 function logout() {
   token.value = null
+  me.value = null
   localStorage.removeItem('token')
   setAuthHeader()
   router.push('/')
@@ -77,8 +93,10 @@ function logout() {
       <div class="header-inner container">
         <nav class="nav">
           <router-link to="/">Home</router-link>
-          <router-link to="/admin">Admin</router-link>
-          <router-link to="/admin/lookups">Cadastros</router-link>
+          <template v-if="isAdmin">
+            <router-link to="/admin">Admin</router-link>
+            <router-link to="/admin/lookups">Cadastros</router-link>
+          </template>
         </nav>
         <div>
           <template v-if="isLogged">

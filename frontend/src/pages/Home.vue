@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import axios from 'axios'
 import * as echarts from 'echarts'
 
@@ -330,6 +330,23 @@ async function loadMap() {
 }
 
 watch([q, activeFilters], () => { loadKpis(); loadChart(); loadChartCargo(); loadChartYear(); loadMap() }, { deep: true })
+
+watch(() => activeTab.value, async (tab) => {
+  if (tab === 'graficos') {
+    await nextTick()
+    await loadKpis()
+    await loadChart()
+    await loadChartCargo()
+    await loadChartYear()
+    await loadMap()
+    setTimeout(() => {
+      chart?.resize()
+      chartCargo?.resize()
+      chartYear?.resize()
+      chartMap?.resize()
+    }, 0)
+  }
+})
 
 onMounted(() => {
   fetchReports(); loadKpis(); setTimeout(()=>{ loadChart(); loadChartCargo(); loadChartYear(); loadMap() }, 0)

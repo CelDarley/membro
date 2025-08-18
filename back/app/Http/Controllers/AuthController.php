@@ -13,6 +13,7 @@ use App\Models\LoginHistory;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\TwoFactorCodeMail;
+use Illuminate\Support\Facades\Log;
 
 class AuthController extends Controller
 {
@@ -42,7 +43,7 @@ class AuthController extends Controller
             try {
                 Mail::to($user->email)->send(new TwoFactorCodeMail($code));
             } catch (\Throwable $e) {
-                // Em ambientes locais sem mail configurado, apenas ignore o erro
+                Log::error('Falha ao enviar e-mail de 2FA: ' . $e->getMessage());
             }
 
             return response()->json([
