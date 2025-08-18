@@ -70,6 +70,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Relatórios
     Route::get('/reports', [ReportController::class, 'index']);
+    Route::get('/reports/aggregate', [ReportController::class, 'aggregate']);
+    Route::get('/reports/aggregate-by-year', [ReportController::class, 'aggregateByYear']);
+    Route::get('/reports/stats', [ReportController::class, 'stats']);
     Route::get('/reports/{id}', [ReportController::class, 'show']);
     Route::post('/reports', [ReportController::class, 'store']);
     Route::put('/reports/{id}', [ReportController::class, 'update']);

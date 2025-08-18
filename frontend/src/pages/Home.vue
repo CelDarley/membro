@@ -1,8 +1,55 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
+import * as echarts from 'echarts'
 
 const api = axios.create({ baseURL: 'http://localhost:8000/api' })
+
+function downloadBlob(content: BlobPart, filename: string, type: string) {
+  const blob = new Blob([content], { type })
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  window.URL.revokeObjectURL(url)
+}
+
+async function exportCsvAll() {
+  const per = 1000
+  let p = 1
+  const all: any[] = []
+  const paramsBase: any = {}
+  if (q.value) paramsBase.q = q.value
+  if (Object.keys(activeFilters.value).length) paramsBase.filters_json = JSON.stringify(activeFilters.value)
+  while (true) {
+    const { data } = await api.get('/reports', { params: { ...paramsBase, per_page: per, page: p } })
+    all.push(...(data?.data || []))
+    if (!data?.data || data.data.length < per) break
+    p++
+  }
+  const hdrs = headers.value
+  const csvRows: string[] = []
+  csvRows.push(['id', ...hdrs].map(v => '"'+String(v).replace(/"/g,'""')+'"').join(','))
+  for (const r of all) {
+    const row = [r.id, ...hdrs.map(h => (r.data && r.data[h] != null) ? r.data[h] : '')]
+    csvRows.push(row.map(v => '"'+String(v).replace(/"/g,'""')+'"').join(','))
+  }
+  downloadBlob(csvRows.join('\n'), 'relatorio.csv', 'text/csv;charset=utf-8;')
+}
+
+function exportChartPng(instance: echarts.ECharts | null, filename: string) {
+  if (!instance) return
+  const dataUrl = instance.getDataURL({ pixelRatio: 2, backgroundColor: '#ffffff' })
+  // converter base64 para blob
+  const b64 = dataUrl.split(',')[1]
+  const bin = atob(b64)
+  const arr = new Uint8Array(bin.length)
+  for (let i=0;i<bin.length;i++) arr[i] = bin.charCodeAt(i)
+  downloadBlob(arr, filename, 'image/png')
+}
 
 const token = ref<string | null>(localStorage.getItem('token'))
 function setAuthHeader() {
@@ -20,6 +67,9 @@ const showFullscreen = ref(false)
 const showModal = ref(false)
 const editingId = ref<number | null>(null)
 const formData = ref<Record<string, any>>({})
+
+// Abas
+const activeTab = ref<'tabela' | 'graficos'>('tabela')
 
 // FILTROS
 const activeFilters = ref<Record<string, string[]>>({})
@@ -162,14 +212,134 @@ function closeModal() {
   showModal.value = false
 }
 
-onMounted(fetchReports)
+const kpi = ref<{ total:number|null, female_count:number|null, female_pct:number|null, median_age_years:number|null, median_tenure_years:number|null}>({ total:null, female_count:null, female_pct:null, median_age_years:null, median_tenure_years:null })
+
+async function loadKpis() {
+  const params: any = {}
+  if (q.value) params.q = q.value
+  if (Object.keys(activeFilters.value).length) params.filters_json = JSON.stringify(activeFilters.value)
+  const { data } = await api.get('/reports/stats', { params })
+  kpi.value = data
+}
+
+const chartEl = ref<HTMLDivElement | null>(null)
+let chart: echarts.ECharts | null = null
+const chartCargoEl = ref<HTMLDivElement | null>(null)
+let chartCargo: echarts.ECharts | null = null
+const chartYearEl = ref<HTMLDivElement | null>(null)
+let chartYear: echarts.ECharts | null = null
+const chartMapEl = ref<HTMLDivElement | null>(null)
+let chartMap: echarts.ECharts | null = null
+let mgGeoLoaded = false
+
+async function loadChart() {
+  if (!chartEl.value) return
+  if (!chart) chart = echarts.init(chartEl.value)
+  const params: any = { field: 'Comarca Lotação', limit: 20 }
+  if (q.value) params.q = q.value
+  if (Object.keys(activeFilters.value).length) params.filters_json = JSON.stringify(activeFilters.value)
+  const { data } = await api.get('/reports/aggregate', { params })
+  const labels = data.data.map((r: any) => r.v)
+  const values = data.data.map((r: any) => r.c)
+  chart.setOption({ tooltip:{}, grid:{ left:8,right:8,top:24,bottom:8,containLabel:true }, xAxis:{ type:'value' }, yAxis:{ type:'category', data:labels, axisLabel:{ interval:0 } }, series:[{ type:'bar', data:values, itemStyle:{ color:'#2563eb' } }] })
+  chart.off('click')
+  chart.on('click', (p) => {
+    const label = labels[p.dataIndex]
+    if (!label) return
+    const list = new Set(activeFilters.value['Comarca Lotação'] || [])
+    list.add(label)
+    activeFilters.value = { ...activeFilters.value, ['Comarca Lotação']: Array.from(list) }
+    page.value = 1
+    fetchReports(); loadKpis(); loadChart(); loadChartCargo(); loadChartYear(); loadMap()
+  })
+}
+
+async function loadChartCargo() {
+  if (!chartCargoEl.value) return
+  if (!chartCargo) chartCargo = echarts.init(chartCargoEl.value)
+  const params: any = { field: 'Cargo efetivo', limit: 10 }
+  if (q.value) params.q = q.value
+  if (Object.keys(activeFilters.value).length) params.filters_json = JSON.stringify(activeFilters.value)
+  const { data } = await api.get('/reports/aggregate', { params })
+  const labels = data.data.map((r: any) => r.v)
+  const values = data.data.map((r: any) => r.c)
+  chartCargo.setOption({ tooltip:{}, grid:{ left:8,right:8,top:24,bottom:8,containLabel:true }, xAxis:{ type:'category', data:labels, axisLabel:{ interval:0, rotate:20 } }, yAxis:{ type:'value' }, series:[{ type:'bar', data:values, itemStyle:{ color:'#16a34a' } }] })
+  chartCargo.off('click')
+  chartCargo.on('click', (p) => {
+    const label = labels[p.dataIndex]
+    const list = new Set(activeFilters.value['Cargo efetivo'] || [])
+    list.add(label)
+    activeFilters.value = { ...activeFilters.value, ['Cargo efetivo']: Array.from(list) }
+    page.value = 1
+    fetchReports(); loadKpis(); loadChart(); loadChartCargo(); loadChartYear(); loadMap()
+  })
+}
+
+async function loadChartYear() {
+  if (!chartYearEl.value) return
+  if (!chartYear) chartYear = echarts.init(chartYearEl.value)
+  const params: any = { field: 'Data da posse' }
+  if (q.value) params.q = q.value
+  if (Object.keys(activeFilters.value).length) params.filters_json = JSON.stringify(activeFilters.value)
+  const { data } = await api.get('/reports/aggregate-by-year', { params })
+  const years = data.data.map((r:any)=>r.year)
+  const counts = data.data.map((r:any)=>r.count)
+  chartYear.setOption({ tooltip:{}, grid:{ left:8,right:8,top:24,bottom:8,containLabel:true }, xAxis:{ type:'category', data:years }, yAxis:{ type:'value' }, series:[{ type:'line', data:counts, smooth:true, itemStyle:{ color:'#f59e0b' } }] })
+}
+
+async function loadMap() {
+  if (!chartMapEl.value) return
+  if (!chartMap) chartMap = echarts.init(chartMapEl.value)
+  try {
+    if (!mgGeoLoaded) {
+      // GeoJSON simplificado de MG (municipios) – tentativa via IBGE; se falhar, não quebra a tela
+      const resp = await fetch('https://servicodados.ibge.gov.br/api/v3/malhas/municipios/31?formato=application/json')
+      if (resp.ok) {
+        const geo = await resp.json()
+        echarts.registerMap('mg_municipios', geo as any)
+        mgGeoLoaded = true
+      }
+    }
+    const params: any = { field: 'Comarca Lotação', limit: 9999 }
+    if (q.value) params.q = q.value
+    if (Object.keys(activeFilters.value).length) params.filters_json = JSON.stringify(activeFilters.value)
+    const { data } = await api.get('/reports/aggregate', { params })
+    const entries: Record<string, number> = {}
+    for (const r of data.data || []) entries[String(r.v).toUpperCase()] = r.c
+
+    const seriesData: any[] = []
+    // Sem mapeamento exato, tentamos casar pelo nome do município nas features
+    // Fallback: exibe apenas tooltips vazios quando não encontra
+    const features = (echarts as any).getMap ? (echarts as any).getMap('mg_municipios')?.geoJson?.features : []
+    if (features && Array.isArray(features)) {
+      for (const f of features) {
+        const name: string = (f.properties?.name || f.properties?.NM_MUN || f.properties?.nm_mun || '').toUpperCase()
+        const val = entries[name] || 0
+        seriesData.push({ name: f.properties?.name || name, value: val })
+      }
+    }
+
+    chartMap.setOption({
+      tooltip: { trigger: 'item', formatter: (p:any) => `${p.name}: ${p.value ?? 0}` },
+      visualMap: { min: 0, max: Math.max(1, ...seriesData.map(d=>d.value||0)), left: 'left', top: 'bottom', text: ['Alto','Baixo'], calculable: true },
+      series: [{ type: 'map', map: 'mg_municipios', roam: true, data: seriesData }]
+    })
+  } catch (e) {
+    // Silencia erros de carregamento do mapa
+  }
+}
+
+watch([q, activeFilters], () => { loadKpis(); loadChart(); loadChartCargo(); loadChartYear(); loadMap() }, { deep: true })
+
+onMounted(() => {
+  fetchReports(); loadKpis(); setTimeout(()=>{ loadChart(); loadChartCargo(); loadChartYear(); loadMap() }, 0)
+})
 </script>
 
 <template>
   <div class="report-area">
     <div class="card">
       <div class="card-body" style="display:grid; gap:12px">
-
         <div class="report-scroll">
           <div class="header-row" :style="{ minWidth: minWidthPx }">
             <input v-model="q" class="input" placeholder="Buscar..." @keyup.enter="page = 1; fetchReports()" />
@@ -179,35 +349,102 @@ onMounted(fetchReports)
             <button class="btn" @click="openCreate">Novo registro</button>
             <button class="btn" @click="showFullscreen = true">Tela cheia</button>
             <button class="btn btn-outline" @click="clearAllFilters">Limpar filtros</button>
+            <button class="btn btn-outline" @click="exportCsvAll">Exportar CSV</button>
           </div>
         </div>
 
-        <div class="table-wrap card">
-          <table class="table table-tight table-compact" :style="{ minWidth: minWidthPx }">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th v-for="h in headers" :key="h">
-                  <span @click.stop="openFilter(h)" style="cursor:pointer; text-decoration:underline">{{ h }}</span>
-                  <span v-if="activeFilters[h]?.length" style="opacity:.7"> ({{ activeFilters[h].length }})</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in items" :key="row.id" @click="openEdit(row)" style="cursor:pointer">
-                <td>{{ row.id }}</td>
-                <td v-for="h in headers" :key="h">
-                  {{ (row.data && row.data[h] != null) ? row.data[h] : '' }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <!-- Abas -->
+        <div class="toolbar" style="gap:6px">
+          <button class="btn btn-outline" :class="{ 'btn': activeTab==='tabela' }" @click="activeTab='tabela'">Tabela</button>
+          <button class="btn btn-outline" :class="{ 'btn': activeTab==='graficos' }" @click="activeTab='graficos'">Gráficos</button>
         </div>
 
-        <div class="toolbar">
-          <button class="btn btn-outline" :disabled="page <= 1" @click="page--; fetchReports()">Anterior</button>
-          <span>Página {{ page }}</span>
-          <button class="btn btn-outline" :disabled="items.length < perPage" @click="page++; fetchReports()">Próxima</button>
+        <!-- Aba: Gráficos -->
+        <div v-if="activeTab==='graficos'" style="display:grid; gap:12px">
+          <!-- KPIs -->
+          <div class="card">
+            <div class="card-body" style="display:grid; gap:8px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items:stretch">
+              <div class="card" style="border-color:#e2e8f0"><div class="card-body"><div>Total</div><div style="font-size:22px; font-weight:700">{{ kpi.total ?? '-' }}</div></div></div>
+              <div class="card" style="border-color:#e2e8f0"><div class="card-body"><div>% Feminino</div><div style="font-size:22px; font-weight:700">{{ kpi.female_pct ?? '-' }}%</div></div></div>
+              <div class="card" style="border-color:#e2e8f0"><div class="card-body"><div>Mediana Idade</div><div style="font-size:22px; font-weight:700">{{ kpi.median_age_years ?? '-' }}</div></div></div>
+              <div class="card" style="border-color:#e2e8f0"><div class="card-body"><div>Mediana Tempo na Promotoria (anos)</div><div style="font-size:22px; font-weight:700">{{ kpi.median_tenure_years ?? '-' }}</div></div></div>
+            </div>
+          </div>
+
+          <!-- Gráfico: Comarca -->
+          <div class="card">
+            <div class="card-body" style="display:grid; gap:12px">
+              <div style="display:flex; align-items:center; justify-content:space-between">
+                <div style="font-weight:600">Top 20 por Comarca Lotação</div>
+                <button class="btn btn-outline" @click="exportChartPng(chart, 'comarca.png')">PNG</button>
+              </div>
+              <div ref="chartEl" style="width: 100%; height: 380px"></div>
+            </div>
+          </div>
+
+          <!-- Gráfico: Cargo efetivo -->
+          <div class="card">
+            <div class="card-body" style="display:grid; gap:12px">
+              <div style="display:flex; align-items:center; justify-content:space-between">
+                <div style="font-weight:600">Top 10 por Cargo efetivo</div>
+                <button class="btn btn-outline" @click="exportChartPng(chartCargo, 'cargo_efetivo.png')">PNG</button>
+              </div>
+              <div ref="chartCargoEl" style="width: 100%; height: 320px"></div>
+            </div>
+          </div>
+
+          <!-- Gráfico: Série por ano -->
+          <div class="card">
+            <div class="card-body" style="display:grid; gap:12px">
+              <div style="display:flex; align-items:center; justify-content:space-between">
+                <div style="font-weight:600">Ingressos por ano (Data da posse)</div>
+                <button class="btn btn-outline" @click="exportChartPng(chartYear, 'posse_por_ano.png')">PNG</button>
+              </div>
+              <div ref="chartYearEl" style="width: 100%; height: 320px"></div>
+            </div>
+          </div>
+
+          <!-- Mapa de comarcas (MG) -->
+          <div class="card">
+            <div class="card-body" style="display:grid; gap:12px">
+              <div style="display:flex; align-items:center; justify-content:space-between">
+                <div style="font-weight:600">Mapa por Comarca (MG)</div>
+                <button class="btn btn-outline" @click="exportChartPng(chartMap, 'mapa_comarca.png')">PNG</button>
+              </div>
+              <div ref="chartMapEl" style="width: 100%; height: 420px"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Aba: Tabela -->
+        <div v-if="activeTab==='tabela'" style="display:grid; gap:12px">
+          <div class="table-wrap card">
+            <table class="table table-tight table-compact" :style="{ minWidth: minWidthPx }">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th v-for="h in headers" :key="h">
+                    <span @click.stop="openFilter(h)" style="cursor:pointer; text-decoration:underline">{{ h }}</span>
+                    <span v-if="activeFilters[h]?.length" style="opacity:.7"> ({{ activeFilters[h].length }})</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in items" :key="row.id" @click="openEdit(row)" style="cursor:pointer">
+                  <td>{{ row.id }}</td>
+                  <td v-for="h in headers" :key="h">
+                    {{ (row.data && row.data[h] != null) ? row.data[h] : '' }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="toolbar">
+            <button class="btn btn-outline" :disabled="page <= 1" @click="page--; fetchReports()">Anterior</button>
+            <span>Página {{ page }}</span>
+            <button class="btn btn-outline" :disabled="items.length < perPage" @click="page++; fetchReports()">Próxima</button>
+          </div>
         </div>
       </div>
     </div>
