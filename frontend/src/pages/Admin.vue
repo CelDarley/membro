@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import { api, setAuthTokenFromStorage } from '@/api'
 
 const router = useRouter()
-const api = axios.create({ baseURL: 'http://localhost:8000/api' })
-const token = localStorage.getItem('token')
-if (token) api.defaults.headers.common.Authorization = `Bearer ${token}`
+setAuthTokenFromStorage()
 
 const users = ref<any[]>([])
 const form = ref({ id: null as number | null, name: '', email: '', phone: '', role: 'user', password: '', password_confirmation: '' })

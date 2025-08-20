@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import axios from 'axios'
+import { api, setAuthTokenFromStorage } from '@/api'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
-const api = axios.create({ baseURL: 'http://localhost:8000/api' })
-const token = localStorage.getItem('token')
-if (token) api.defaults.headers.common.Authorization = `Bearer ${token}`
+setAuthTokenFromStorage()
 
 async function ensureAdmin() {
   try {

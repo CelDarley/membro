@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import axios from 'axios'
+import { api, setAuthTokenFromStorage } from '@/api'
 import * as echarts from 'echarts'
 
-const api = axios.create({ baseURL: 'http://localhost:8000/api' })
+setAuthTokenFromStorage()
 
 function downloadBlob(content: BlobPart, filename: string, type: string) {
   const blob = new Blob([content], { type })
@@ -67,6 +68,17 @@ const showFullscreen = ref(false)
 const showModal = ref(false)
 const editingId = ref<number | null>(null)
 const formData = ref<Record<string, any>>({})
+
+// controle de permissão
+const isAdmin = ref(false)
+async function ensureMe() {
+  try {
+    const { data } = await api.get('/auth/me')
+    isAdmin.value = data?.user?.role === 'admin'
+  } catch {
+    isAdmin.value = false
+  }
+}
 
 // Abas
 const activeTab = ref<'tabela' | 'graficos'>('tabela')
@@ -160,6 +172,54 @@ async function ensureLookupOptions() {
   }
 }
 
+// Novos campos adicionais
+const ufList = [
+  'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'
+]
+const memberOptions = ref<Array<{ id:number, name:string }>>([])
+const memberIdToName = computed<Record<number,string>>(() => {
+  const map: Record<number,string> = {}
+  for (const m of memberOptions.value) map[m.id] = m.name
+  return map
+})
+const friendsSearch = ref('')
+const friendsSelectId = ref<number | null>(null)
+const friendsFiltered = computed(() => {
+  const selected = new Set<number>(Array.isArray(formData.value['Amigos no MP (IDs)']) ? formData.value['Amigos no MP (IDs)'] : [])
+  const term = friendsSearch.value.trim().toLowerCase()
+  return memberOptions.value
+    .filter(m => !selected.has(m.id))
+    .filter(m => !term || m.name.toLowerCase().includes(term) || String(m.id).includes(term))
+    .slice(0, 100)
+})
+async function ensureMemberOptions() {
+  if (memberOptions.value.length) return
+  // Busca as primeiras 2000 entradas para opções (pode ajustar conforme volume)
+  const per = 500
+  let p = 1
+  const all: Array<{id:number,name:string}> = []
+  while (p <= 4) {
+    const { data } = await api.get('/reports', { params: { per_page: per, page: p } })
+    const rows = data?.data || []
+    for (const r of rows) {
+      const name = (r?.data?.['Membro']) || (r?.data?.['Nome']) || `#${r.id}`
+      all.push({ id: r.id, name: String(name) })
+    }
+    if (!rows.length || rows.length < per) break
+    p++
+  }
+  memberOptions.value = all
+}
+function addFriend(id: number) {
+  if (!Array.isArray(formData.value['Amigos no MP (IDs)'])) formData.value['Amigos no MP (IDs)'] = []
+  const arr: number[] = formData.value['Amigos no MP (IDs)']
+  if (!arr.includes(id)) arr.push(id)
+}
+function removeFriend(id: number) {
+  if (!Array.isArray(formData.value['Amigos no MP (IDs)'])) return
+  formData.value['Amigos no MP (IDs)'] = formData.value['Amigos no MP (IDs)'].filter((x:number)=>x!==id)
+}
+
 const headers = computed<string[]>(() => {
   const set = new Set<string>()
   for (const row of items.value) {
@@ -170,8 +230,40 @@ const headers = computed<string[]>(() => {
   return Array.from(set)
 })
 
+// Filtra o campo técnico da modal
+const formHeaders = computed<string[]>(() => {
+  const exclude = new Set([
+    'Amigos no MP (IDs)',
+    'Data da pretensão',
+    'Time de futebol e outros grupos extraprofissionais',
+    'Quantidade de filhos',
+    'Nome dos filhos',
+    'Acadêmico',
+    'Pretensão de movimentação na carreira',
+    'Carreira anterior',
+    'Liderança',
+    'Grupos identitários',
+  ])
+  return headers.value.filter(h => !exclude.has(String(h).trim()))
+})
+
+// Colunas visíveis inicialmente na tabela principal
+const visibleColumns = [
+  'Mamp',
+  'Sexo',
+  'Membro',
+  'Concurso',
+  'Cargo efetivo',
+  'Titularidade',
+  'eMail pessoal',
+  'Cargo Especial',
+  'Telefone Unidade',
+  'Telefone celular',
+]
+const tableHeaders = computed<string[]>(() => visibleColumns.filter(h => headers.value.includes(h)))
 const baseWidth = computed(() => Math.max(1600, headers.value.length * 200))
 const minWidthPx = computed(() => `${baseWidth.value}px`)
+const displayedMinWidthPx = computed(() => `${Math.max(1000, (tableHeaders.value.length + 2) * 200)}px`)
 
 async function fetchReports() {
   const params: any = { q: q.value, page: page.value, per_page: perPage.value }
@@ -185,15 +277,37 @@ async function openCreate() {
   editingId.value = null
   const initial: Record<string, any> = {}
   for (const h of headers.value) initial[h] = ''
+  // garantir campos adicionais
+  initial['Amigos no MP (IDs)'] = []
+  initial['Time de futebol e outros grupos extraprofissionais'] = ''
+  initial['Quantidade de filhos'] = ''
+  initial['Nome dos filhos'] = ''
+  initial['Estado de origem'] = ''
+  initial['Acadêmico'] = ''
+  initial['Pretensão de movimentação na carreira'] = ''
+  initial['Carreira anterior'] = ''
+  initial['Liderança'] = ''
+  initial['Grupos identitários'] = ''
   formData.value = initial
-  await Promise.all([ensureMunicipiosMG(), ensureLookupOptions()])
+  await Promise.all([ensureMunicipiosMG(), ensureLookupOptions(), ensureMemberOptions()])
   showModal.value = true
 }
 
 async function openEdit(row: any) {
   editingId.value = row.id
-  formData.value = { ...(row.data || {}) }
-  await Promise.all([ensureMunicipiosMG(), ensureLookupOptions()])
+  const next = { ...(row.data || {}) }
+  if (!Array.isArray(next['Amigos no MP (IDs)'])) next['Amigos no MP (IDs)'] = []
+  next['Time de futebol e outros grupos extraprofissionais'] = next['Time de futebol e outros grupos extraprofissionais'] || ''
+  next['Quantidade de filhos'] = next['Quantidade de filhos'] || ''
+  next['Nome dos filhos'] = next['Nome dos filhos'] || ''
+  next['Estado de origem'] = next['Estado de origem'] || ''
+  next['Acadêmico'] = next['Acadêmico'] || ''
+  next['Pretensão de movimentação na carreira'] = next['Pretensão de movimentação na carreira'] || ''
+  next['Carreira anterior'] = next['Carreira anterior'] || ''
+  next['Liderança'] = next['Liderança'] || ''
+  next['Grupos identitários'] = next['Grupos identitários'] || ''
+  formData.value = next
+  await Promise.all([ensureMunicipiosMG(), ensureLookupOptions(), ensureMemberOptions()])
   showModal.value = true
 }
 
@@ -231,6 +345,7 @@ let chartYear: echarts.ECharts | null = null
 const chartMapEl = ref<HTMLDivElement | null>(null)
 let chartMap: echarts.ECharts | null = null
 let mgGeoLoaded = false
+let mgGeoFeatures: any[] = []
 
 async function loadChart() {
   if (!chartEl.value) return
@@ -292,12 +407,29 @@ async function loadMap() {
   if (!chartMap) chartMap = echarts.init(chartMapEl.value)
   try {
     if (!mgGeoLoaded) {
-      // GeoJSON simplificado de MG (municipios) – tentativa via IBGE; se falhar, não quebra a tela
-      const resp = await fetch('https://servicodados.ibge.gov.br/api/v3/malhas/municipios/31?formato=application/json')
-      if (resp.ok) {
-        const geo = await resp.json()
+      // tenta arquivo local (se existir e com features)
+      let geo: any | null = null
+      try {
+        // @ts-ignore - JSON import dinâmico suportado pelo Vite
+        const mod = await import('@/assets/mg.geo.json')
+        geo = mod?.default || mod
+      } catch {}
+      if (!geo || !Array.isArray(geo.features) || geo.features.length === 0) {
+        const resp = await fetch('https://servicodados.ibge.gov.br/api/v3/malhas/municipios/31?formato=application/vnd.geo+json')
+        if (resp.ok) {
+          const remote = await resp.json()
+          if (remote && Array.isArray(remote.features) && remote.features.length > 0) {
+            geo = remote
+          }
+        }
+      }
+      if (geo && Array.isArray(geo.features) && geo.features.length > 0) {
         echarts.registerMap('mg_municipios', geo as any)
         mgGeoLoaded = true
+        mgGeoFeatures = geo.features
+      } else {
+        mgGeoLoaded = false
+        mgGeoFeatures = []
       }
     }
     const params: any = { field: 'Comarca Lotação', limit: 9999 }
@@ -308,9 +440,7 @@ async function loadMap() {
     for (const r of data.data || []) entries[String(r.v).toUpperCase()] = r.c
 
     const seriesData: any[] = []
-    // Sem mapeamento exato, tentamos casar pelo nome do município nas features
-    // Fallback: exibe apenas tooltips vazios quando não encontra
-    const features = (echarts as any).getMap ? (echarts as any).getMap('mg_municipios')?.geoJson?.features : []
+    const features = mgGeoFeatures && mgGeoFeatures.length ? mgGeoFeatures : ((echarts as any).getMap ? (echarts as any).getMap('mg_municipios')?.geoJson?.features : [])
     if (features && Array.isArray(features)) {
       for (const f of features) {
         const name: string = (f.properties?.name || f.properties?.NM_MUN || f.properties?.nm_mun || '').toUpperCase()
@@ -325,11 +455,136 @@ async function loadMap() {
       series: [{ type: 'map', map: 'mg_municipios', roam: true, data: seriesData }]
     })
   } catch (e) {
-    // Silencia erros de carregamento do mapa
+    chartMap.setOption({ series: [{ type: 'map', map: 'mg_municipios', data: [] }] })
   }
 }
 
-watch([q, activeFilters], () => { loadKpis(); loadChart(); loadChartCargo(); loadChartYear(); loadMap() }, { deep: true })
+// Grafo de relacionamentos (Amigos no MP)
+const graphEl = ref<HTMLDivElement | null>(null)
+let graph: echarts.ECharts | null = null
+const graphStats = ref<{ nodes:number, edges:number }>({ nodes: 0, edges: 0 })
+
+function normalizeName(s: string): string {
+  return String(s || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase()
+}
+
+async function loadGraph() {
+  if (!graphEl.value) return
+  if (!graph) graph = echarts.init(graphEl.value)
+  graphStats.value = { nodes: 0, edges: 0 }
+  const per = 500
+  let p = 1
+  const maxPages = 20
+  const all: Array<{ id:number, data:any }> = []
+  const paramsBase: any = {}
+  if (q.value) paramsBase.q = q.value
+  if (Object.keys(activeFilters.value).length) paramsBase.filters_json = JSON.stringify(activeFilters.value)
+
+  try {
+    while (p <= maxPages) { // até ~10000 registros
+      const { data } = await api.get('/reports', { params: { ...paramsBase, per_page: per, page: p } })
+      const rows = data?.data || []
+      for (const r of rows) all.push({ id: r.id, data: r.data || {} })
+      if (!rows.length || rows.length < per) break
+      p++
+    }
+  } catch (e) {
+    // Fallback: usa itens já carregados na tabela
+    for (const r of items.value || []) all.push({ id: r.id, data: r.data || {} })
+  }
+
+  if (all.length === 0) {
+    graph.setOption({ series: [{ type: 'graph', data: [], links: [] }] })
+    graphStats.value = { nodes: 0, edges: 0 }
+    return
+  }
+
+  // Mapear nomes dos membros
+  const idToName: Record<number,string> = {}
+  const nameToId: Record<string, number> = {}
+  for (const r of all) {
+    const nm = String(r.data['Membro'] || r.data['Nome'] || `#${r.id}`)
+    idToName[r.id] = nm
+    const key = normalizeName(nm)
+    if (key && !nameToId[key]) nameToId[key] = r.id
+  }
+
+  // Construir arestas (não direcionadas) a partir de "Amigos no MP (IDs)"
+  const edgeSet = new Set<string>()
+  const degree: Record<number, number> = {}
+  const idSet = new Set<number>(all.map(r => r.id))
+  for (const r of all) {
+    const raw: any = r.data['Amigos no MP (IDs)']
+    let friendIds: number[] = []
+    if (Array.isArray(raw)) friendIds = raw.map((x:any)=>Number(x)).filter((n)=>Number.isFinite(n))
+    else if (typeof raw === 'string') {
+      const ids = raw.split(/[^0-9]+/).map(s=>Number(s)).filter(n=>Number.isFinite(n))
+      if (ids.length) friendIds = ids
+      else {
+        // tentar casar por nome
+        const tokens = raw.split(/[\n,;]+/).map(t => normalizeName(t)).filter(Boolean)
+        const resolved: number[] = []
+        for (const t of tokens) {
+          if (nameToId[t]) resolved.push(nameToId[t])
+        }
+        friendIds = resolved
+      }
+    }
+    for (const fid of friendIds) {
+      if (!idSet.has(fid)) continue
+      const a = Math.min(r.id, fid)
+      const b = Math.max(r.id, fid)
+      const key = `${a}-${b}`
+      if (!edgeSet.has(key) && a !== b) {
+        edgeSet.add(key)
+        degree[a] = (degree[a] ?? 0) + 1
+        degree[b] = (degree[b] ?? 0) + 1
+      }
+    }
+  }
+
+  // Selecionar até 300 nós com maior grau (inclui nós isolados se necessário)
+  const nodesAll = Array.from(Object.keys(degree).map(Number)).map(id => ({
+    id: String(id),
+    name: idToName[id] || `#${id}`,
+    value: degree[id] ?? 0,
+  }))
+  nodesAll.sort((a,b) => (b.value - a.value))
+  const nodesCap = nodesAll.slice(0, 300)
+  const allowed = new Set(nodesCap.map(n => Number(n.id)))
+
+  const links = Array.from(edgeSet).map(k => {
+    const [a,b] = k.split('-').map(n => Number(n))
+    return { source: String(a), target: String(b) }
+  }).filter(e => allowed.has(Number(e.source)) && allowed.has(Number(e.target)))
+
+  const nodes = nodesCap.map(n => ({
+    ...n,
+    symbolSize: Math.max(8, 8 + (n.value || 0) * 2),
+  }))
+
+  graphStats.value = { nodes: nodes.length, edges: links.length }
+
+  graph.setOption({
+    tooltip: { formatter: (p:any) => p.data?.name || '' },
+    series: [{
+      type: 'graph',
+      layout: 'force',
+      roam: true,
+      label: { show: true, position: 'right', formatter: '{b}', fontSize: 10 },
+      data: nodes,
+      links,
+      force: { repulsion: 120, edgeLength: [30, 120] },
+      lineStyle: { color: '#94a3b8' },
+      itemStyle: { color: '#2563eb' },
+    }],
+  })
+}
+
+watch([q, activeFilters], () => { loadKpis(); loadChart(); loadChartCargo(); loadChartYear(); loadMap(); loadGraph() }, { deep: true })
 
 watch(() => activeTab.value, async (tab) => {
   if (tab === 'graficos') {
@@ -339,17 +594,20 @@ watch(() => activeTab.value, async (tab) => {
     await loadChartCargo()
     await loadChartYear()
     await loadMap()
+    await loadGraph()
     setTimeout(() => {
       chart?.resize()
       chartCargo?.resize()
       chartYear?.resize()
       chartMap?.resize()
+      graph?.resize()
     }, 0)
   }
 })
 
 onMounted(() => {
-  fetchReports(); loadKpis(); setTimeout(()=>{ loadChart(); loadChartCargo(); loadChartYear(); loadMap() }, 0)
+  ensureMe()
+  fetchReports(); loadKpis(); setTimeout(()=>{ loadChart(); loadChartCargo(); loadChartYear(); loadMap(); loadGraph() }, 0)
 })
 </script>
 
@@ -363,7 +621,7 @@ onMounted(() => {
             <button class="btn" @click="page = 1; fetchReports()">Pesquisar</button>
             <button class="btn btn-outline" @click="q = ''; page = 1; fetchReports()">Limpar</button>
             <div style="opacity:.8; margin-left:auto">Total: {{ total }}</div>
-            <button class="btn" @click="openCreate">Novo registro</button>
+            <button v-if="isAdmin" class="btn" @click="openCreate">Novo registro</button>
             <button class="btn" @click="showFullscreen = true">Tela cheia</button>
             <button class="btn btn-outline" @click="clearAllFilters">Limpar filtros</button>
             <button class="btn btn-outline" @click="exportCsvAll">Exportar CSV</button>
@@ -429,6 +687,22 @@ onMounted(() => {
                 <button class="btn btn-outline" @click="exportChartPng(chartMap, 'mapa_comarca.png')">PNG</button>
               </div>
               <div ref="chartMapEl" style="width: 100%; height: 420px"></div>
+              <div v-if="!mgGeoLoaded" style="opacity:.8; font-size: 12px">Não foi possível carregar o mapa do IBGE agora. Tente recarregar a página.</div>
+            </div>
+          </div>
+
+          <!-- Gráfico: Relacionamentos (Amigos no MP) -->
+          <div class="card">
+            <div class="card-body" style="display:grid; gap:12px">
+              <div style="display:flex; align-items:center; justify-content:space-between">
+                <div style="font-weight:600">Relacionamentos (Amigos no MP)</div>
+                <div style="display:flex; gap:8px; align-items:center">
+                  <small style="opacity:.8">Nós: {{ graphStats.nodes }} · Arestas: {{ graphStats.edges }}</small>
+                  <button class="btn btn-outline" @click="exportChartPng(graph, 'relacionamentos.png')">PNG</button>
+                </div>
+              </div>
+              <div ref="graphEl" style="width: 100%; height: 480px"></div>
+              <div v-if="graphStats.nodes === 0" style="opacity:.8; font-size: 12px">Sem dados para exibir. Ajuste os filtros ou adicione registros.</div>
             </div>
           </div>
         </div>
@@ -436,21 +710,27 @@ onMounted(() => {
         <!-- Aba: Tabela -->
         <div v-if="activeTab==='tabela'" style="display:grid; gap:12px">
           <div class="table-wrap card">
-            <table class="table table-tight table-compact" :style="{ minWidth: minWidthPx }">
+            <table class="table table-tight table-compact" :style="{ minWidth: displayedMinWidthPx }">
               <thead>
                 <tr>
                   <th>#</th>
-                  <th v-for="h in headers" :key="h">
+                  <th v-for="h in tableHeaders" :key="h">
                     <span @click.stop="openFilter(h)" style="cursor:pointer; text-decoration:underline">{{ h }}</span>
                     <span v-if="activeFilters[h]?.length" style="opacity:.7"> ({{ activeFilters[h].length }})</span>
                   </th>
+                  <th style="width:80px">Ações</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in items" :key="row.id" @click="openEdit(row)" style="cursor:pointer">
+                <tr v-for="row in items" :key="row.id">
                   <td>{{ row.id }}</td>
-                  <td v-for="h in headers" :key="h">
+                  <td v-for="h in tableHeaders" :key="h">
                     {{ (row.data && row.data[h] != null) ? row.data[h] : '' }}
+                  </td>
+                  <td>
+                    <button class="btn btn-outline" title="Detalhes" @click="openEdit(row)">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"></path></svg>
+                    </button>
                   </td>
                 </tr>
               </tbody>
@@ -503,42 +783,117 @@ onMounted(() => {
       <div class="fullscreen-body">
         <div class="fullscreen-scroll">
           <form @submit.prevent="save" style="display:grid; gap:12px; max-width:960px">
-            <div v-for="h in headers" :key="h" class="card" style="border-color:#e2e8f0">
+            <div v-for="h in formHeaders" :key="h" class="card" style="border-color:#e2e8f0">
               <div class="card-body" style="display:grid; gap:6px">
                 <label :for="'f-'+h" style="font-weight:600">{{ h }}</label>
                 <template v-if="h === 'Sexo'">
-                  <select :id="'f-'+h" class="input" v-model="formData[h]">
+                  <select :id="'f-'+h" class="input" v-model="formData[h]" :disabled="!isAdmin">
                     <option value="">Selecione</option>
                     <option value="Masculino">Masculino</option>
                     <option value="Feminino">Feminino</option>
                   </select>
                 </template>
                 <template v-else-if="h === 'Cargo efetivo'">
-                  <select :id="'f-'+h" class="input" v-model="formData[h]">
+                  <select :id="'f-'+h" class="input" v-model="formData[h]" :disabled="!isAdmin">
                     <option value="">Selecione</option>
                     <option v-for="opt in (lookupOptions['cargo_efetivo'] || [])" :key="opt" :value="opt">{{ opt }}</option>
                   </select>
                 </template>
                 <template v-else-if="h === 'Comarca Lotação'">
-                  <select :id="'f-'+h" class="input" v-model="formData[h]">
+                  <select :id="'f-'+h" class="input" v-model="formData[h]" :disabled="!isAdmin">
                     <option value="">Selecione</option>
                     <option v-for="m in mgMunicipios" :key="m" :value="m">{{ m }}</option>
                   </select>
                 </template>
+                <template v-else-if="h === 'Estado de origem'">
+                  <select :id="'f-'+h" class="input" v-model="formData[h]" :disabled="!isAdmin">
+                    <option value="">Selecione</option>
+                    <option v-for="uf in ufList" :key="uf" :value="uf">{{ uf }}</option>
+                  </select>
+                </template>
                 <template v-else-if="lookupTypesByHeader[h]">
-                  <select :id="'f-'+h" class="input" v-model="formData[h]">
+                  <select :id="'f-'+h" class="input" v-model="formData[h]" :disabled="!isAdmin">
                     <option value="">Selecione</option>
                     <option v-for="opt in (lookupOptions[lookupTypesByHeader[h]] || [])" :key="opt" :value="opt">{{ opt }}</option>
                   </select>
                 </template>
                 <template v-else>
-                  <input :id="'f-'+h" class="input" v-model="formData[h]" />
+                  <input :id="'f-'+h" class="input" v-model="formData[h]" :disabled="!isAdmin" />
                 </template>
               </div>
             </div>
+
+            <!-- Campos adicionais solicitados -->
+            <div class="card" style="border-color:#e2e8f0">
+              <div class="card-body" style="display:grid; gap:10px">
+                <div style="font-weight:700">Campos adicionais</div>
+
+                <!-- Amigos no MP (multi) -->
+                <div>
+                  <label style="font-weight:600; display:block; margin-bottom:4px">Amigos no MP</label>
+                  <div v-if="Array.isArray(formData['Amigos no MP (IDs)']) && formData['Amigos no MP (IDs)'].length">
+                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px">
+                      <span v-for="fid in formData['Amigos no MP (IDs)']" :key="fid" class="badge">
+                        {{ memberIdToName[fid] || ('#'+fid) }}
+                        <button v-if="isAdmin" type="button" class="btn btn-outline" style="padding:2px 6px; margin-left:6px" @click="removeFriend(fid)">x</button>
+                      </span>
+                    </div>
+                  </div>
+                  <div v-if="isAdmin" style="display:flex; gap:8px; align-items:center">
+                    <input class="input" placeholder="Buscar por nome/ID" v-model="friendsSearch" @focus="ensureMemberOptions" style="max-width: 320px" />
+                    <select class="input" v-model.number="friendsSelectId" @focus="ensureMemberOptions" style="max-width: 360px">
+                      <option :value="null">Selecione um membro</option>
+                      <option v-for="m in friendsFiltered" :key="m.id" :value="m.id">{{ m.name }} ({{ m.id }})</option>
+                    </select>
+                    <button type="button" class="btn" :disabled="!friendsSelectId" @click="friendsSelectId && addFriend(friendsSelectId)">Adicionar</button>
+                  </div>
+                  <div v-else-if="!(Array.isArray(formData['Amigos no MP (IDs)']) && formData['Amigos no MP (IDs)'].length)" style="opacity:.8">Nenhum amigo selecionado.</div>
+                </div>
+
+                <!-- Time de futebol e outros grupos extraprofissionais -->
+                <div>
+                  <label style="font-weight:600" for="f-time">Time de futebol e outros grupos extraprofissionais</label>
+                  <input id="f-time" class="input" v-model="formData['Time de futebol e outros grupos extraprofissionais']" :disabled="!isAdmin" />
+                </div>
+
+                
+                <div>
+                  <label style="font-weight:600" for="f-filhos-qtd">Quantidade de filhos</label>
+                  <input id="f-filhos-qtd" class="input" type="number" min="0" v-model="formData['Quantidade de filhos']" :disabled="!isAdmin" />
+                </div>
+
+                <div>
+                  <label style="font-weight:600" for="f-nome-filhos">Nome dos filhos</label>
+                  <input id="f-nome-filhos" class="input" v-model="formData['Nome dos filhos']" :disabled="!isAdmin" />
+                </div>
+                <div>
+                  <label style="font-weight:600" for="f-academico">Acadêmico</label>
+                  <input id="f-academico" class="input" v-model="formData['Acadêmico']" :disabled="!isAdmin" />
+                </div>
+                <div>
+                  <label style="font-weight:600" for="f-pret">Pretensão de movimentação na carreira</label>
+                  <input id="f-pret" class="input" v-model="formData['Pretensão de movimentação na carreira']" :disabled="!isAdmin" />
+                </div>
+                <div>
+                  <label style="font-weight:600" for="f-carreira-ant">Carreira anterior</label>
+                  <input id="f-carreira-ant" class="input" v-model="formData['Carreira anterior']" :disabled="!isAdmin" />
+                </div>
+                <div>
+                  <label style="font-weight:600" for="f-lideranca">Liderança</label>
+                  <input id="f-lideranca" class="input" v-model="formData['Liderança']" :disabled="!isAdmin" />
+                </div>
+                <div>
+                  <label style="font-weight:600" for="f-grupos">Grupos identitários</label>
+                  <input id="f-grupos" class="input" v-model="formData['Grupos identitários']" :disabled="!isAdmin" />
+                </div>
+
+              </div>
+            </div>
+            <!-- fim campos adicionais -->
+
             <div style="display:flex; gap:8px">
-              <button type="submit" class="btn">Salvar</button>
-              <button type="button" class="btn btn-outline" @click="closeModal">Cancelar</button>
+              <button v-if="isAdmin" type="submit" class="btn">Salvar</button>
+              <button type="button" class="btn btn-outline" @click="closeModal">{{ isAdmin ? 'Cancelar' : 'Fechar' }}</button>
             </div>
           </form>
         </div>
