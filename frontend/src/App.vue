@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import { api, setAuthTokenFromStorage } from '@/api'
 
 const router = useRouter()
-const api = axios.create({ baseURL: 'http://localhost:8000/api' })
-
-const email = ref('admin@trustme.com')
-const password = ref('admin123')
+const email = ref('')
+const password = ref('')
 const token = ref<string | null>(localStorage.getItem('token'))
 const loading = ref(false)
 const error = ref('')
@@ -17,8 +15,7 @@ const twoFactorCode = ref('')
 const me = ref<any>(null)
 
 function setAuthHeader() {
-  if (token.value) api.defaults.headers.common.Authorization = `Bearer ${token.value}`
-  else delete api.defaults.headers.common.Authorization
+  setAuthTokenFromStorage()
 }
 setAuthHeader()
 
