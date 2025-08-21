@@ -7,7 +7,7 @@ const router = useRouter()
 setAuthTokenFromStorage()
 
 const users = ref<any[]>([])
-const form = ref({ id: null as number | null, name: '', email: '', phone: '', role: 'user', password: '', password_confirmation: '' })
+const form = ref({ id: null as number | null, name: '', email: '', phone: '', role: 'user', password: '', password_confirmation: '', two_factor_enabled: false })
 const message = ref('')
 const errorMsg = ref('')
 
@@ -26,13 +26,13 @@ async function loadUsers() {
 }
 
 function edit(u: any) {
-  form.value = { id: u.id, name: u.name, email: u.email, phone: u.phone || '', role: u.role, password: '', password_confirmation: '' }
+  form.value = { id: u.id, name: u.name, email: u.email, phone: u.phone || '', role: u.role, password: '', password_confirmation: '', two_factor_enabled: !!u.two_factor_enabled }
   message.value = ''
   errorMsg.value = ''
 }
 
 function reset() {
-  form.value = { id: null, name: '', email: '', phone: '', role: 'user', password: '', password_confirmation: '' }
+  form.value = { id: null, name: '', email: '', phone: '', role: 'user', password: '', password_confirmation: '', two_factor_enabled: false }
   message.value = ''
   errorMsg.value = ''
 }
@@ -90,6 +90,7 @@ function buildPayload() {
     base.password = form.value.password
     base.password_confirmation = form.value.password_confirmation
   }
+  base.two_factor_enabled = !!form.value.two_factor_enabled
   return base
 }
 
@@ -145,6 +146,9 @@ onMounted(async () => {
         <option value="admin">Administrador</option>
         <option value="user">Comum</option>
       </select>
+      <label style="display:flex; align-items:center; gap:8px">
+        <input type="checkbox" v-model="form.two_factor_enabled" /> 2FA habilitado
+      </label>
       <input v-model="form.password" type="password" placeholder="Senha (deixe em branco para não alterar)" />
       <input v-model="form.password_confirmation" type="password" placeholder="Confirmar Senha" />
       <div style="display:flex; gap:8px">

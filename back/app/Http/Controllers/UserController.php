@@ -48,6 +48,7 @@ class UserController extends Controller
             'phone' => 'nullable|string|max:30',
             'password' => 'required|string|min:8|confirmed',
             'role' => 'in:admin,user',
+            'two_factor_enabled' => 'boolean',
         ]);
 
         if ($validator->fails()) {
@@ -63,6 +64,7 @@ class UserController extends Controller
             'phone' => $request->phone,
             'password' => Hash::make($request->password),
             'role' => $request->role ?? 'user',
+            'two_factor_enabled' => (bool) $request->boolean('two_factor_enabled'),
         ]);
 
         return response()->json([
@@ -89,6 +91,7 @@ class UserController extends Controller
             'phone' => 'nullable|string|max:30',
             'password' => 'nullable|string|min:8|confirmed',
             'role' => 'in:admin,user',
+            'two_factor_enabled' => 'boolean',
         ]);
 
         if ($validator->fails()) {
@@ -98,7 +101,10 @@ class UserController extends Controller
             ], 422);
         }
 
-        $data = $request->only(['name', 'email', 'phone', 'role']);
+        $data = $request->only(['name', 'email', 'phone', 'role', 'two_factor_enabled']);
+        if ($request->has('two_factor_enabled')) {
+            $data['two_factor_enabled'] = (bool) $request->boolean('two_factor_enabled');
+        }
         
         if ($request->password) {
             $data['password'] = Hash::make($request->password);
