@@ -73,8 +73,14 @@ const formData = ref<Record<string, any>>({})
 const isAdmin = ref(false)
 async function ensureMe() {
   try {
+    setAuthTokenFromStorage()
+    const r = await api.get('/check-admin')
+    isAdmin.value = !!(r && r.data && r.data.is_admin)
+    return
+  } catch {}
+  try {
     const { data } = await api.get('/auth/me')
-    isAdmin.value = data?.user?.role === 'admin'
+    isAdmin.value = String(data?.user?.role || '').toLowerCase() === 'admin'
   } catch {
     isAdmin.value = false
   }
