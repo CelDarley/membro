@@ -1,5 +1,5 @@
 from flask import Blueprint, request
-from flask_jwt_extended import jwt_required
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import func
 from ..db import db
 from ..models import Membro
@@ -95,6 +95,10 @@ def stats_membros():
 @bp.post('/membros')
 @jwt_required()
 def create_membro():
+	ident = get_jwt_identity() or {}
+	role = (ident.get('role') or '').lower()
+	if role != 'admin':
+		return { 'message': 'Apenas administradores podem criar registros.' }, 403
 	data = (request.get_json() or {}).get('data') or {}
 	m = Membro(
 		nome=data.get('Membro') or data.get('Nome'),
@@ -127,6 +131,10 @@ def create_membro():
 @bp.put('/membros/<int:id>')
 @jwt_required()
 def update_membro(id: int):
+	ident = get_jwt_identity() or {}
+	role = (ident.get('role') or '').lower()
+	if role != 'admin':
+		return { 'message': 'Apenas administradores podem editar registros.' }, 403
 	m = Membro.query.get_or_404(id)
 	data = (request.get_json() or {}).get('data') or {}
 	m.nome = data.get('Membro') or data.get('Nome') or m.nome
