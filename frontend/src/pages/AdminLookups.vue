@@ -16,7 +16,6 @@ async function ensureAdmin() {
 }
 
 const typeOptions = [
-  { label: 'Membro', value: 'membro' },
   { label: 'Concurso', value: 'concurso' },
   { label: 'Naturalidade', value: 'naturalidade' },
   { label: 'Titularidade', value: 'titularidade' },
