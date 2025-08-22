@@ -792,38 +792,68 @@ onMounted(() => {
               <div class="card-body" style="display:grid; gap:6px">
                 <label :for="'f-'+h" style="font-weight:600">{{ h }}</label>
                 <template v-if="h === 'Sexo'">
-                  <select :id="'f-'+h" class="input" v-model="formData[h]" :disabled="!isAdmin">
-                    <option value="">Selecione</option>
-                    <option value="Masculino">Masculino</option>
-                    <option value="Feminino">Feminino</option>
-                  </select>
+                  <template v-if="isAdmin">
+                    <select :id="'f-'+h" class="input" v-model="formData[h]">
+                      <option value="">Selecione</option>
+                      <option value="Masculino">Masculino</option>
+                      <option value="Feminino">Feminino</option>
+                    </select>
+                  </template>
+                  <template v-else>
+                    <div>{{ formData[h] || '-' }}</div>
+                  </template>
                 </template>
                 <template v-else-if="h === 'Cargo efetivo'">
-                  <select :id="'f-'+h" class="input" v-model="formData[h]" :disabled="!isAdmin">
-                    <option value="">Selecione</option>
-                    <option v-for="opt in (lookupOptions['cargo_efetivo'] || [])" :key="opt" :value="opt">{{ opt }}</option>
-                  </select>
+                  <template v-if="isAdmin">
+                    <select :id="'f-'+h" class="input" v-model="formData[h]">
+                      <option value="">Selecione</option>
+                      <option v-for="opt in (lookupOptions['cargo_efetivo'] || [])" :key="opt" :value="opt">{{ opt }}</option>
+                    </select>
+                  </template>
+                  <template v-else>
+                    <div>{{ formData[h] || '-' }}</div>
+                  </template>
                 </template>
                 <template v-else-if="h === 'Comarca Lotação'">
-                  <select :id="'f-'+h" class="input" v-model="formData[h]" :disabled="!isAdmin">
-                    <option value="">Selecione</option>
-                    <option v-for="m in mgMunicipios" :key="m" :value="m">{{ m }}</option>
-                  </select>
+                  <template v-if="isAdmin">
+                    <select :id="'f-'+h" class="input" v-model="formData[h]">
+                      <option value="">Selecione</option>
+                      <option v-for="m in mgMunicipios" :key="m" :value="m">{{ m }}</option>
+                    </select>
+                  </template>
+                  <template v-else>
+                    <div>{{ formData[h] || '-' }}</div>
+                  </template>
                 </template>
                 <template v-else-if="h === 'Estado de origem'">
-                  <select :id="'f-'+h" class="input" v-model="formData[h]" :disabled="!isAdmin">
-                    <option value="">Selecione</option>
-                    <option v-for="uf in ufList" :key="uf" :value="uf">{{ uf }}</option>
-                  </select>
+                  <template v-if="isAdmin">
+                    <select :id="'f-'+h" class="input" v-model="formData[h]">
+                      <option value="">Selecione</option>
+                      <option v-for="uf in ufList" :key="uf" :value="uf">{{ uf }}</option>
+                    </select>
+                  </template>
+                  <template v-else>
+                    <div>{{ formData[h] || '-' }}</div>
+                  </template>
                 </template>
                 <template v-else-if="lookupTypesByHeader[h]">
-                  <select :id="'f-'+h" class="input" v-model="formData[h]" :disabled="!isAdmin">
-                    <option value="">Selecione</option>
-                    <option v-for="opt in (lookupOptions[lookupTypesByHeader[h]] || [])" :key="opt" :value="opt">{{ opt }}</option>
-                  </select>
+                  <template v-if="isAdmin">
+                    <select :id="'f-'+h" class="input" v-model="formData[h]">
+                      <option value="">Selecione</option>
+                      <option v-for="opt in (lookupOptions[lookupTypesByHeader[h]] || [])" :key="opt" :value="opt">{{ opt }}</option>
+                    </select>
+                  </template>
+                  <template v-else>
+                    <div>{{ formData[h] || '-' }}</div>
+                  </template>
                 </template>
                 <template v-else>
-                  <input :id="'f-'+h" class="input" v-model="formData[h]" :disabled="!isAdmin" />
+                  <template v-if="isAdmin">
+                    <input :id="'f-'+h" class="input" v-model="formData[h]" />
+                  </template>
+                  <template v-else>
+                    <div>{{ formData[h] || '-' }}</div>
+                  </template>
                 </template>
               </div>
             </div>
@@ -858,38 +888,46 @@ onMounted(() => {
                 <!-- Time de futebol e outros grupos extraprofissionais -->
                 <div>
                   <label style="font-weight:600" for="f-time">Time de futebol e outros grupos extraprofissionais</label>
-                  <input id="f-time" class="input" v-model="formData['Time de futebol e outros grupos extraprofissionais']" :disabled="!isAdmin" />
+                  <template v-if="isAdmin"><input id="f-time" class="input" v-model="formData['Time de futebol e outros grupos extraprofissionais']" /></template>
+                  <template v-else><div>{{ formData['Time de futebol e outros grupos extraprofissionais'] || '-' }}</div></template>
                 </div>
 
                 
                 <div>
                   <label style="font-weight:600" for="f-filhos-qtd">Quantidade de filhos</label>
-                  <input id="f-filhos-qtd" class="input" type="number" min="0" v-model="formData['Quantidade de filhos']" :disabled="!isAdmin" />
+                  <template v-if="isAdmin"><input id="f-filhos-qtd" class="input" type="number" min="0" v-model="formData['Quantidade de filhos']" /></template>
+                  <template v-else><div>{{ formData['Quantidade de filhos'] ?? '-' }}</div></template>
                 </div>
 
                 <div>
                   <label style="font-weight:600" for="f-nome-filhos">Nome dos filhos</label>
-                  <input id="f-nome-filhos" class="input" v-model="formData['Nome dos filhos']" :disabled="!isAdmin" />
+                  <template v-if="isAdmin"><input id="f-nome-filhos" class="input" v-model="formData['Nome dos filhos']" /></template>
+                  <template v-else><div>{{ formData['Nome dos filhos'] || '-' }}</div></template>
                 </div>
                 <div>
                   <label style="font-weight:600" for="f-academico">Acadêmico</label>
-                  <input id="f-academico" class="input" v-model="formData['Acadêmico']" :disabled="!isAdmin" />
+                  <template v-if="isAdmin"><input id="f-academico" class="input" v-model="formData['Acadêmico']" /></template>
+                  <template v-else><div>{{ formData['Acadêmico'] || '-' }}</div></template>
                 </div>
                 <div>
                   <label style="font-weight:600" for="f-pret">Pretensão de movimentação na carreira</label>
-                  <input id="f-pret" class="input" v-model="formData['Pretensão de movimentação na carreira']" :disabled="!isAdmin" />
+                  <template v-if="isAdmin"><input id="f-pret" class="input" v-model="formData['Pretensão de movimentação na carreira']" /></template>
+                  <template v-else><div>{{ formData['Pretensão de movimentação na carreira'] || '-' }}</div></template>
                 </div>
                 <div>
                   <label style="font-weight:600" for="f-carreira-ant">Carreira anterior</label>
-                  <input id="f-carreira-ant" class="input" v-model="formData['Carreira anterior']" :disabled="!isAdmin" />
+                  <template v-if="isAdmin"><input id="f-carreira-ant" class="input" v-model="formData['Carreira anterior']" /></template>
+                  <template v-else><div>{{ formData['Carreira anterior'] || '-' }}</div></template>
                 </div>
                 <div>
                   <label style="font-weight:600" for="f-lideranca">Liderança</label>
-                  <input id="f-lideranca" class="input" v-model="formData['Liderança']" :disabled="!isAdmin" />
+                  <template v-if="isAdmin"><input id="f-lideranca" class="input" v-model="formData['Liderança']" /></template>
+                  <template v-else><div>{{ formData['Liderança'] || '-' }}</div></template>
                 </div>
                 <div>
                   <label style="font-weight:600" for="f-grupos">Grupos identitários</label>
-                  <input id="f-grupos" class="input" v-model="formData['Grupos identitários']" :disabled="!isAdmin" />
+                  <template v-if="isAdmin"><input id="f-grupos" class="input" v-model="formData['Grupos identitários']" /></template>
+                  <template v-else><div>{{ formData['Grupos identitários'] || '-' }}</div></template>
                 </div>
 
               </div>
