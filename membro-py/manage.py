@@ -26,12 +26,21 @@ def create_admin(name, email, password):
 
 @app.cli.command('import-membros')
 @click.argument('path')
+@click.option('--truncate', is_flag=True, help='Limpa tabelas antes de importar')
 @with_appcontext
-def import_membros(path):
+def import_membros(path, truncate):
 	path = os.path.abspath(path)
 	if not os.path.exists(path):
 		click.echo(f'Arquivo não encontrado: {path}')
 		return
+	if truncate:
+		try:
+			# limpar pivot primeiro
+			db.session.execute(db.text('DELETE FROM membro_amigos'))
+		except Exception:
+			pass
+		Membro.query.delete()
+		db.session.commit()
 	rows = []
 	ext = os.path.splitext(path)[1].lower()
 	if ext == '.xlsx':
@@ -52,7 +61,7 @@ def import_membros(path):
 		return
 
 	idx = { h:i for i,h in enumerate(headers) }
-	ins = 0
+	created = []
 	for r in rows:
 		def v(h):
 			i = idx.get(h)
@@ -81,14 +90,37 @@ def import_membros(path):
 			grupos_identitarios = v('Grupos identitários') or v('Grupos identitarios'),
 		)
 		db.session.add(m)
-		ins += 1
+		created.append((m, {h:(v(h) if h in idx else None) for h in headers}))
 	db.session.commit()
-	click.echo(f'Importados: {ins}')
+	# relacionamentos por IDs se houver coluna
+	for m, raw in created:
+		raw_ids = (raw.get('Amigos no MP (IDs)') or '').strip()
+		if not raw_ids:
+			continue
+		ids = [int(x) for x in filter(None, [s.strip() for s in raw_ids.replace(';',',').replace('|',',').split(',')]) if x.isdigit()]
+		if not ids:
+			continue
+		# busca por id
+		friends = Membro.query.filter(Membro.id.in_(ids)).all()
+		for f in friends:
+			if f.id != m.id and f not in m.amigos:
+				m.amigos.append(f)
+	db.session.commit()
+	click.echo(f'Importados: {len(created)} (com relacionamentos quando informados)')
 
 @app.cli.command('seed-demo')
+@click.option('--force', is_flag=True, help='Limpa as tabelas antes de inserir exemplos')
 @with_appcontext
-def seed_demo():
-	# cria alguns membros de exemplo
+def seed_demo(force):
+	# opcionalmente limpar tabelas
+	if force:
+		try:
+			# limpar pivot primeiro
+			db.session.execute(db.text('DELETE FROM membro_amigos'))
+		except Exception:
+			pass
+		Membro.query.delete()
+		db.session.commit()
 	if Membro.query.count() > 0:
 		click.echo('Já existem membros, não será duplicado.')
 		return
