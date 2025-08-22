@@ -13,7 +13,7 @@ class Kernel extends ConsoleKernel
 	 * @var array
 	 */
 	protected $commands = [
-		\App\Console\Commands\ImportReportsFromExcel::class,
+		\App\Console\Commands\ImportMembrosFromExcel::class,
 		\App\Console\Commands\BootstrapLookups::class,
 	];
 

@@ -4,18 +4,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\GoogleAuthController;
-use App\Http\Controllers\PlanController;
-use App\Http\Controllers\SubscriptionController;
-use App\Http\Controllers\FaqController;
-use App\Http\Controllers\TestimonialController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\SiteSettingController;
 use App\Http\Controllers\AdminController;
-use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\LoginHistoryController;
-use App\Http\Controllers\ContratoTipoController;
-use App\Http\Controllers\SeloController;
 use App\Http\Controllers\ReportController;
 
 /*
@@ -37,16 +30,10 @@ Route::get('/auth/google/callback', [GoogleAuthController::class, 'handleGoogleC
 Route::get('/auth/google/status', [GoogleAuthController::class, 'checkGoogleConnection']);
 
 // Rotas públicas de conteúdo
-Route::get('/plans', [PlanController::class, 'index']);
-Route::get('/plans/{id}', [PlanController::class, 'show']);
-Route::get('/faqs', [FaqController::class, 'index']);
-Route::get('/testimonials', [TestimonialController::class, 'index']);
 Route::post('/contacts', [ContactController::class, 'store']);
 Route::get('/site-content', [SiteSettingController::class, 'getSiteContent']);
 
-// Rotas públicas de pagamento
-Route::get('/payment/methods', [PaymentController::class, 'getPaymentMethods']);
-Route::post('/payment/webhook', [PaymentController::class, 'webhook']);
+// (Removidos: planos, faqs, testimonials e pagamentos)
 
 // Rotas protegidas por autenticação
 Route::middleware('auth:sanctum')->group(function () {
@@ -61,12 +48,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user/profile', [UserController::class, 'profile']);
     Route::put('/user/profile', [UserController::class, 'updateProfile']);
 
-    // Assinaturas do usuário
-    Route::get('/user/subscriptions', [SubscriptionController::class, 'userSubscriptions']);
+    // (Removido: subscriptions do usuário)
 
-    // Pagamentos
-    Route::post('/payment/create-preference', [PaymentController::class, 'createPreference']);
-    Route::post('/payment/process', [PaymentController::class, 'processPayment']);
+    // (Removido: pagamentos)
 
     // Relatórios
     Route::get('/reports', [ReportController::class, 'index']);
@@ -78,15 +62,19 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/reports/{id}', [ReportController::class, 'update']);
     Route::delete('/reports/{id}', [ReportController::class, 'destroy']);
 
+    // Membros normalizados
+    Route::get('/membros', [\App\Http\Controllers\MembroController::class, 'index']);
+    Route::get('/membros/aggregate', [\App\Http\Controllers\MembroController::class, 'aggregate']);
+    Route::get('/membros/stats', [\App\Http\Controllers\MembroController::class, 'stats']);
+
     // Rotas administrativas
     Route::middleware('check.admin')->group(function () {
 
         // Dashboard
         Route::get('/admin/dashboard', [AdminController::class, 'dashboard']);
         Route::get('/admin/users', [AdminController::class, 'users']);
-        Route::get('/admin/subscriptions', [AdminController::class, 'subscriptions']);
         Route::get('/admin/contacts', [AdminController::class, 'contacts']);
-        Route::get('/admin/reports', [AdminController::class, 'reports']);
+        // (Removido: admin subscriptions e admin reports de plano/receita)
 
         // Gestão de usuários
         Route::apiResource('users', UserController::class);
@@ -98,18 +86,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/lookups/{id}', [\App\Http\Controllers\LookupController::class, 'destroy']);
         Route::post('/lookups/bootstrap', [\App\Http\Controllers\LookupController::class, 'bootstrapFromReports']);
 
-        // Gestão de planos
-        Route::apiResource('plans', PlanController::class)->except(['index', 'show']);
-
-        // Gestão de assinaturas
-        Route::apiResource('subscriptions', SubscriptionController::class);
-        Route::put('/subscriptions/{id}/cancel', [SubscriptionController::class, 'cancel']);
-
-        // Gestão de FAQs
-        Route::apiResource('faqs', FaqController::class)->except(['index']);
-
-        // Gestão de depoimentos
-        Route::apiResource('testimonials', TestimonialController::class)->except(['index']);
+        // (Removido: gestão de planos/assinaturas)
+        // (Removido: faqs)
+        // (Removido: testimonials)
 
         // Gestão de contatos
         Route::apiResource('contacts', ContactController::class)->except(['store']);
@@ -120,11 +99,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::apiResource('site-settings', SiteSettingController::class);
         Route::post('/site-settings/bulk-update', [SiteSettingController::class, 'bulkUpdate']);
 
-        // Gestão de Tipos de Contrato
-        Route::apiResource('contrato-tipos', ContratoTipoController::class);
-
-        // Gestão de Selos
-        Route::apiResource('selos', SeloController::class);
+        // (Removidos: contrato-tipos e selos)
     });
 
     // Histórico de Login
