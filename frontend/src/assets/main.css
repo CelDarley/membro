@@ -60,6 +60,9 @@ body {
 /* força centralização do main logo abaixo de #app em todas as páginas */
 #app > div > main { max-width: 1120px; margin: 20px auto 0 !important; padding-left: 12px; padding-right: 12px; }
 
+/* centralizar também o wrapper imediatamente abaixo de #app (inclui header e main) */
+#app > div { max-width: 1120px; margin: 20px auto 0; padding-left: 12px; padding-right: 12px; }
+
 /* espaçamento superior global do conteúdo */
 .page-wrap { max-width: 1120px; margin: 20px auto 0; padding: 0 12px; }
 
