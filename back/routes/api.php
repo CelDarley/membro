@@ -52,7 +52,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // (Removido: pagamentos)
 
-    // Relatórios
+    // Relatórios (legado, mantido temporariamente)
     Route::get('/reports', [ReportController::class, 'index']);
     Route::get('/reports/aggregate', [ReportController::class, 'aggregate']);
     Route::get('/reports/aggregate-by-year', [ReportController::class, 'aggregateByYear']);
@@ -74,7 +74,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/admin/dashboard', [AdminController::class, 'dashboard']);
         Route::get('/admin/users', [AdminController::class, 'users']);
         Route::get('/admin/contacts', [AdminController::class, 'contacts']);
-        // (Removido: admin subscriptions e admin reports de plano/receita)
 
         // Gestão de usuários
         Route::apiResource('users', UserController::class);
@@ -86,9 +85,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/lookups/{id}', [\App\Http\Controllers\LookupController::class, 'destroy']);
         Route::post('/lookups/bootstrap', [\App\Http\Controllers\LookupController::class, 'bootstrapFromReports']);
 
-        // (Removido: gestão de planos/assinaturas)
-        // (Removido: faqs)
-        // (Removido: testimonials)
+        // CRUD básico de membros (criar/atualizar)
+        Route::post('/membros', [\App\Http\Controllers\MembroController::class, 'store']);
+        Route::put('/membros/{id}', [\App\Http\Controllers\MembroController::class, 'update']);
 
         // Gestão de contatos
         Route::apiResource('contacts', ContactController::class)->except(['store']);
@@ -98,8 +97,6 @@ Route::middleware('auth:sanctum')->group(function () {
         // Configurações do site
         Route::apiResource('site-settings', SiteSettingController::class);
         Route::post('/site-settings/bulk-update', [SiteSettingController::class, 'bulkUpdate']);
-
-        // (Removidos: contrato-tipos e selos)
     });
 
     // Histórico de Login

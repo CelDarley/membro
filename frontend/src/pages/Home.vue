@@ -26,7 +26,7 @@ async function exportCsvAll() {
   if (q.value) paramsBase.q = q.value
   if (Object.keys(activeFilters.value).length) paramsBase.filters_json = JSON.stringify(activeFilters.value)
   while (true) {
-    const { data } = await api.get('/reports', { params: { ...paramsBase, per_page: per, page: p } })
+    const { data } = await api.get('/membros', { params: { ...paramsBase, per_page: per, page: p } })
     all.push(...(data?.data || []))
     if (!data?.data || data.data.length < per) break
     p++
@@ -199,7 +199,7 @@ async function ensureMemberOptions() {
   let p = 1
   const all: Array<{id:number,name:string}> = []
   while (p <= 4) {
-    const { data } = await api.get('/reports', { params: { per_page: per, page: p } })
+    const { data } = await api.get('/membros', { params: { per_page: per, page: p } })
     const rows = data?.data || []
     for (const r of rows) {
       const name = (r?.data?.['Membro']) || (r?.data?.['Nome']) || `#${r.id}`
@@ -268,7 +268,7 @@ const displayedMinWidthPx = computed(() => `${Math.max(1000, (tableHeaders.value
 async function fetchReports() {
   const params: any = { q: q.value, page: page.value, per_page: perPage.value }
   if (Object.keys(activeFilters.value).length) params.filters_json = JSON.stringify(activeFilters.value)
-  const { data } = await api.get('/reports', { params })
+  const { data } = await api.get('/membros', { params })
   items.value = data.data
   total.value = data.total
 }
@@ -314,9 +314,9 @@ async function openEdit(row: any) {
 async function save() {
   const payload = { data: formData.value }
   if (editingId.value) {
-    await api.put(`/reports/${editingId.value}`, payload)
+    await api.put(`/membros/${editingId.value}`, payload)
   } else {
-    await api.post('/reports', payload)
+    await api.post('/membros', payload)
   }
   showModal.value = false
   await fetchReports()
@@ -332,7 +332,7 @@ async function loadKpis() {
   const params: any = {}
   if (q.value) params.q = q.value
   if (Object.keys(activeFilters.value).length) params.filters_json = JSON.stringify(activeFilters.value)
-  const { data } = await api.get('/reports/stats', { params })
+  const { data } = await api.get('/membros/stats', { params })
   kpi.value = data
 }
 
@@ -353,7 +353,7 @@ async function loadChart() {
   const params: any = { field: 'Comarca Lotação', limit: 20 }
   if (q.value) params.q = q.value
   if (Object.keys(activeFilters.value).length) params.filters_json = JSON.stringify(activeFilters.value)
-  const { data } = await api.get('/reports/aggregate', { params })
+  const { data } = await api.get('/membros/aggregate', { params })
   const labels = data.data.map((r: any) => r.v)
   const values = data.data.map((r: any) => r.c)
   chart.setOption({ tooltip:{}, grid:{ left:8,right:8,top:24,bottom:8,containLabel:true }, xAxis:{ type:'value' }, yAxis:{ type:'category', data:labels, axisLabel:{ interval:0 } }, series:[{ type:'bar', data:values, itemStyle:{ color:'#2563eb' } }] })
@@ -375,7 +375,7 @@ async function loadChartCargo() {
   const params: any = { field: 'Cargo efetivo', limit: 10 }
   if (q.value) params.q = q.value
   if (Object.keys(activeFilters.value).length) params.filters_json = JSON.stringify(activeFilters.value)
-  const { data } = await api.get('/reports/aggregate', { params })
+  const { data } = await api.get('/membros/aggregate', { params })
   const labels = data.data.map((r: any) => r.v)
   const values = data.data.map((r: any) => r.c)
   chartCargo.setOption({ tooltip:{}, grid:{ left:8,right:8,top:24,bottom:8,containLabel:true }, xAxis:{ type:'category', data:labels, axisLabel:{ interval:0, rotate:20 } }, yAxis:{ type:'value' }, series:[{ type:'bar', data:values, itemStyle:{ color:'#16a34a' } }] })
@@ -396,10 +396,15 @@ async function loadChartYear() {
   const params: any = { field: 'Data da posse' }
   if (q.value) params.q = q.value
   if (Object.keys(activeFilters.value).length) params.filters_json = JSON.stringify(activeFilters.value)
-  const { data } = await api.get('/reports/aggregate-by-year', { params })
-  const years = data.data.map((r:any)=>r.year)
-  const counts = data.data.map((r:any)=>r.count)
-  chartYear.setOption({ tooltip:{}, grid:{ left:8,right:8,top:24,bottom:8,containLabel:true }, xAxis:{ type:'category', data:years }, yAxis:{ type:'value' }, series:[{ type:'line', data:counts, smooth:true, itemStyle:{ color:'#f59e0b' } }] })
+  // Rota de ano não existe em /membros; opcionalmente manteremos usando legacy se disponível
+  try {
+    const { data } = await api.get('/reports/aggregate-by-year', { params })
+    const years = data.data.map((r:any)=>r.year)
+    const counts = data.data.map((r:any)=>r.count)
+    chartYear.setOption({ tooltip:{}, grid:{ left:8,right:8,top:24,bottom:8,containLabel:true }, xAxis:{ type:'category', data:years }, yAxis:{ type:'value' }, series:[{ type:'line', data:counts, smooth:true, itemStyle:{ color:'#f59e0b' } }] })
+  } catch {
+    chartYear.setOption({ series:[{ type:'line', data:[] }] })
+  }
 }
 
 async function loadMap() {
@@ -435,7 +440,7 @@ async function loadMap() {
     const params: any = { field: 'Comarca Lotação', limit: 9999 }
     if (q.value) params.q = q.value
     if (Object.keys(activeFilters.value).length) params.filters_json = JSON.stringify(activeFilters.value)
-    const { data } = await api.get('/reports/aggregate', { params })
+    const { data } = await api.get('/membros/aggregate', { params })
     const entries: Record<string, number> = {}
     for (const r of data.data || []) entries[String(r.v).toUpperCase()] = r.c
 
@@ -485,7 +490,7 @@ async function loadGraph() {
 
   try {
     while (p <= maxPages) { // até ~10000 registros
-      const { data } = await api.get('/reports', { params: { ...paramsBase, per_page: per, page: p } })
+      const { data } = await api.get('/membros', { params: { ...paramsBase, per_page: per, page: p } })
       const rows = data?.data || []
       for (const r of rows) all.push({ id: r.id, data: r.data || {} })
       if (!rows.length || rows.length < per) break
