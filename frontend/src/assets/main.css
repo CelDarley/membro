@@ -2,7 +2,7 @@
 
 #app {
   max-width: 1280px;
-  margin: 0 auto;
+  margin: 0;
   padding: 2rem;
   font-weight: normal;
 }
@@ -22,8 +22,17 @@ a,
 }
 
 @media (min-width: 1024px) {
-  body { display: block; }
-  #app { display: block; padding: 0 2rem; }
+  body {
+    display: flex;
+    justify-content: flex-start;
+    align-items: flex-start;
+  }
+
+  #app {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    padding: 0 2rem;
+  }
 }
 
 :root {
@@ -46,21 +55,30 @@ body {
   font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
 }
 
-/* garantir centralização do container em todo lugar */
-.container { max-width: 1120px; margin: 0 auto; padding: 16px; }
+.container {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 16px;
+}
 
-/* força centralização do main logo abaixo de #app em todas as páginas */
-#app > div > main { max-width: 1120px; margin: 20px auto 0 !important; padding-left: 12px; padding-right: 12px; }
+.container-fluid {
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
 
-/* centralizar também o wrapper imediatamente abaixo de #app (inclui header e main) */
-#app > div { max-width: 1120px; margin: 20px auto 0; padding-left: 12px; padding-right: 12px; }
+.report-area { width: calc(100vw - 24px); margin: 0 12px; }
+.report-scroll { overflow-x: auto; }
 
-/* espaçamento superior global do conteúdo */
-.page-wrap { max-width: 1120px; margin: 20px auto 0; padding: 0 12px; }
-
-/* header fix: não colar no topo visualmente */
-.header { position: sticky; top: 0; z-index: 10; background: var(--card-bg); border-bottom: 1px solid var(--border); }
-.header-inner { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px !important; max-width: 1120px; margin: 0 auto; }
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
+}
+.header-inner { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px !important; }
 .nav { display: flex; gap: 12px; align-items: center; }
 .nav a { color: var(--text); text-decoration: none; opacity: 0.9; }
 .nav a.router-link-active { font-weight: 600; opacity: 1; }

@@ -106,8 +106,8 @@ function logout() {
       </div>
     </header>
 
-    <main class="container page-wrap" style="padding-top:16px">
-      <div v-if="!isLogged" class="card" style="max-width: 420px; margin: 0 auto">
+    <main class="container-fluid page-wrap" style="padding-top:16px">
+      <div v-if="!isLogged" class="card" style="max-width: 420px">
         <div class="card-body" style="display: grid; gap: 10px;">
           <input v-model="email" class="input" type="email" placeholder="Email" />
           <div style="position: relative">

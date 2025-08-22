@@ -51,7 +51,7 @@ class ImportMembrosFromExcel extends Command
         $rawHeaders = $rows[$headerRowIndex] ?? [];
         $dataRows = array_slice($rows, $headerRowIndex + 1);
 
-        // Mapeamento simples: tenta casar nomes de colunas usuais
+        // Mapeamento robusto de colunas
         $map = $this->buildHeaderMap($rawHeaders);
         $inserted = 0; $updated = 0;
 
@@ -85,34 +85,40 @@ class ImportMembrosFromExcel extends Command
             else { Membro::create($payload); $inserted++; }
         }
 
+        // Segunda passada: relacionamentos (amigos)
+        DB::table('membro_amigos')->truncate();
+        $this->importFriends($dataRows, $map);
+
         $this->info("Importação concluída. Inseridos: {$inserted}, Atualizados: {$updated}");
         return self::SUCCESS;
     }
 
     private function buildHeaderMap(array $raw): array
     {
-        // aceita variações: 'Membro' ou 'Nome'
+        // aceita variações de nomes e normaliza acentos/caixa/espaços
         $aliases = [
             'nome' => ['Membro','Nome','NOME'],
-            'sexo' => ['Sexo'],
+            'sexo' => ['Sexo','SEXO'],
             'concurso' => ['Concurso'],
-            'cargo_efetivo' => ['Cargo efetivo','Cargo Efetivo'],
+            'cargo_efetivo' => ['Cargo efetivo','Cargo Efetivo','CARGO EFETIVO'],
             'titularidade' => ['Titularidade'],
-            'email_pessoal' => ['eMail pessoal','Email','E-mail','e-mail pessoal'],
-            'cargo_especial' => ['Cargo Especial'],
-            'telefone_unidade' => ['Telefone Unidade'],
-            'telefone_celular' => ['Telefone celular'],
-            'unidade_lotacao' => ['Unidade Lotação'],
-            'comarca_lotacao' => ['Comarca Lotação'],
-            'time_extraprofissionais' => ['Time de futebol e outros grupos extraprofissionais'],
-            'quantidade_filhos' => ['Quantidade de filhos'],
-            'nomes_filhos' => ['Nome dos filhos'],
-            'estado_origem' => ['Estado de origem'],
-            'academico' => ['Acadêmico'],
-            'pretensao_carreira' => ['Pretensão de movimentação na carreira'],
+            'email_pessoal' => ['eMail pessoal','Email pessoal','Email','E-mail','e-mail pessoal'],
+            'cargo_especial' => ['Cargo Especial','CARGO ESPECIAL'],
+            'telefone_unidade' => ['Telefone Unidade','Telefone da Unidade','Telefone (Unidade)'],
+            'telefone_celular' => ['Telefone celular','Celular','Telefone Celular'],
+            'unidade_lotacao' => ['Unidade Lotação','Unidade de Lotação','Unidade de lotação'],
+            'comarca_lotacao' => ['Comarca Lotação','Comarca de Lotação','Comarca'],
+            'time_extraprofissionais' => ['Time de futebol e outros grupos extraprofissionais','Grupos extraprofissionais','Time de futebol'],
+            'quantidade_filhos' => ['Quantidade de filhos','Qtde de filhos','Qtd filhos'],
+            'nomes_filhos' => ['Nome dos filhos','Nomes dos filhos'],
+            'estado_origem' => ['Estado de origem','UF de origem','Estado origem'],
+            'academico' => ['Acadêmico','Academico'],
+            'pretensao_carreira' => ['Pretensão de movimentação na carreira','Pretensao de movimentacao na carreira','Pretensão de carreira'],
             'carreira_anterior' => ['Carreira anterior'],
-            'lideranca' => ['Liderança'],
-            'grupos_identitarios' => ['Grupos identitários'],
+            'lideranca' => ['Liderança','Lideranca'],
+            'grupos_identitarios' => ['Grupos identitários','Grupos identitarios'],
+            // amigos: coluna opcional
+            'amigos_col' => ['Amigos no MP','Amigos no MP (IDs)','Amigos no MP (Nomes)','Amigos MP'],
         ];
         $map = [];
         foreach ($aliases as $key => $opts) {
@@ -121,14 +127,78 @@ class ImportMembrosFromExcel extends Command
         return $map;
     }
 
+    private function normalize(string $s): string
+    {
+        $s = trim(mb_strtolower($s, 'UTF-8'));
+        // remover acentos
+        $s = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s) ?: $s;
+        // remover não alfanumérico
+        $s = preg_replace('/[^a-z0-9]+/','', $s) ?? $s;
+        return $s;
+    }
+
     private function findCol(array $raw, array $opts): ?string
     {
+        $normOpts = array_map(fn($v) => $this->normalize((string)$v), $opts);
         foreach ($raw as $col => $label) {
-            $t = trim((string)$label);
-            foreach ($opts as $alias) {
-                if (strcasecmp($t, $alias) === 0) return $col;
+            $t = $this->normalize((string)$label);
+            foreach ($normOpts as $n) {
+                if ($t === $n) return $col; // match exato normalizado
+                if ($n !== '' && $t !== '' && (str_contains($t, $n) || str_contains($n, $t))) return $col; // match parcial
             }
         }
         return null; // pode ficar null e o valor vira null no payload
+    }
+
+    private function importFriends(array $dataRows, array $map): void
+    {
+        $nomeCol = $map['nome'] ?? null;
+        $amigosCol = $map['amigos_col'] ?? null;
+        if (!$nomeCol || !$amigosCol) return;
+
+        // mapa de nome normalizado -> id
+        $all = Membro::select('id','nome')->get();
+        $nameToId = [];
+        foreach ($all as $m) {
+            $key = $this->normalize((string)$m->nome);
+            if ($key !== '') $nameToId[$key] = (int)$m->id;
+        }
+
+        foreach ($dataRows as $row) {
+            $nome = trim((string)($row[$nomeCol] ?? ''));
+            if ($nome === '') continue;
+            $ownerId = Membro::where('nome',$nome)->value('id');
+            if (!$ownerId) continue;
+
+            $raw = $row[$amigosCol] ?? null;
+            if ($raw === null || $raw === '') continue;
+            $str = trim((string)$raw);
+            if ($str === '') continue;
+
+            $friendIds = [];
+            // tentar capturar IDs
+            $ids = array_values(array_filter(array_map('intval', preg_split('/[^0-9]+/', $str) ?: []), fn($n)=>$n>0));
+            if (!empty($ids)) {
+                $friendIds = $ids;
+            } else {
+                // dividir por separadores e casar por nome
+                $tokens = array_values(array_filter(preg_split('/[\n,;]+/', $str) ?: [], fn($t)=>trim($t) !== ''));
+                foreach ($tokens as $t) {
+                    $key = $this->normalize((string)$t);
+                    if ($key !== '' && isset($nameToId[$key])) $friendIds[] = (int)$nameToId[$key];
+                }
+            }
+            $friendIds = array_values(array_unique(array_filter($friendIds, fn($id)=>$id !== (int)$ownerId)));
+            if (empty($friendIds)) continue;
+
+            // anexar nas duas direções
+            $owner = Membro::find($ownerId);
+            if (!$owner) continue;
+            $owner->amigos()->syncWithoutDetaching($friendIds);
+            foreach ($friendIds as $fid) {
+                $peer = Membro::find($fid);
+                if ($peer) $peer->amigos()->syncWithoutDetaching([$ownerId]);
+            }
+        }
     }
 } 

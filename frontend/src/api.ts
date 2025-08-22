@@ -1,6 +1,16 @@
 import axios from 'axios'
 
-const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
+function normalizeBaseUrl(raw?: string): string {
+	let url = (raw || '').trim()
+	if (!url) return 'http://localhost:8000/api'
+	// remove barras à direita
+	url = url.replace(/\/+$/, '')
+	// garante sufixo /api
+	if (!/\/(api)$/.test(url)) url = url + '/api'
+	return url
+}
+
+const baseURL = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL)
 
 export const api = axios.create({ baseURL })
 
