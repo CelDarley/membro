@@ -52,7 +52,7 @@ class LookupController extends Controller
     public function bootstrapFromReports()
     {
         $map = [
-            'Membro' => 'membro',
+            // 'Membro' => 'membro', // removido: membros são geridos na tela própria
             'Concurso' => 'concurso',
             'Naturalidade' => 'naturalidade',
             'Titularidade' => 'titularidade',

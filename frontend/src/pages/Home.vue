@@ -154,7 +154,6 @@ async function ensureMunicipiosMG() {
 
 // Lookups controlados pelo Admin
 const lookupTypesByHeader: Record<string, string> = {
-  'Membro': 'membro',
   'Concurso': 'concurso',
   'Naturalidade': 'naturalidade',
   'Titularidade': 'titularidade',
