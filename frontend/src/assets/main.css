@@ -57,6 +57,9 @@ body {
 /* garantir centralização do container em todo lugar */
 .container { max-width: 1120px; margin: 0 auto; padding: 16px; }
 
+/* força centralização do main logo abaixo de #app em todas as páginas */
+#app > div > main { max-width: 1120px; margin: 20px auto 0 !important; padding-left: 12px; padding-right: 12px; }
+
 /* espaçamento superior global do conteúdo */
 .page-wrap { max-width: 1120px; margin: 20px auto 0; padding: 0 12px; }
 
