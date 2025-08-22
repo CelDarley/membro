@@ -19,6 +19,35 @@ def apply_filters(query):
 	return query
 
 
+def to_row(m: Membro):
+	return {
+		'id': m.id,
+		'data': {
+			'Membro': m.nome,
+			'Sexo': m.sexo,
+			'Concurso': m.concurso,
+			'Cargo efetivo': m.cargo_efetivo,
+			'Titularidade': m.titularidade,
+			'eMail pessoal': m.email_pessoal,
+			'Cargo Especial': m.cargo_especial,
+			'Telefone Unidade': m.telefone_unidade,
+			'Telefone celular': m.telefone_celular,
+			'Unidade Lotação': m.unidade_lotacao,
+			'Comarca Lotação': m.comarca_lotacao,
+			'Time de futebol e outros grupos extraprofissionais': m.time_extraprofissionais,
+			'Quantidade de filhos': m.quantidade_filhos,
+			'Nome dos filhos': m.nomes_filhos,
+			'Estado de origem': m.estado_origem,
+			'Acadêmico': m.academico,
+			'Pretensão de movimentação na carreira': m.pretensao_carreira,
+			'Carreira anterior': m.carreira_anterior,
+			'Liderança': m.lideranca,
+			'Grupos identitários': m.grupos_identitarios,
+			'Amigos no MP (IDs)': [a.id for a in m.amigos],
+		}
+	}
+
+
 @bp.get('/membros')
 @jwt_required()
 def list_membros():
@@ -26,36 +55,15 @@ def list_membros():
 	page = int(request.args.get('page', 1))
 	per_page = int(request.args.get('per_page', 20))
 	p = query.order_by(Membro.id.desc()).paginate(page=page, per_page=per_page, error_out=False)
-	data = [
-		{
-			'id': m.id,
-			'data': {
-				'Membro': m.nome,
-				'Sexo': m.sexo,
-				'Concurso': m.concurso,
-				'Cargo efetivo': m.cargo_efetivo,
-				'Titularidade': m.titularidade,
-				'eMail pessoal': m.email_pessoal,
-				'Cargo Especial': m.cargo_especial,
-				'Telefone Unidade': m.telefone_unidade,
-				'Telefone celular': m.telefone_celular,
-				'Unidade Lotação': m.unidade_lotacao,
-				'Comarca Lotação': m.comarca_lotacao,
-				'Time de futebol e outros grupos extraprofissionais': m.time_extraprofissionais,
-				'Quantidade de filhos': m.quantidade_filhos,
-				'Nome dos filhos': m.nomes_filhos,
-				'Estado de origem': m.estado_origem,
-				'Acadêmico': m.academico,
-				'Pretensão de movimentação na carreira': m.pretensao_carreira,
-				'Carreira anterior': m.carreira_anterior,
-				'Liderança': m.lideranca,
-				'Grupos identitários': m.grupos_identitarios,
-				'Amigos no MP (IDs)': [a.id for a in m.amigos],
-			}
-		}
-		for m in p.items
-	]
+	data = [to_row(m) for m in p.items]
 	return {'data': data, 'total': p.total}
+
+
+@bp.get('/membros/<int:id>')
+@jwt_required()
+def get_membro(id: int):
+	m = Membro.query.get_or_404(id)
+	return to_row(m)
 
 
 @bp.get('/membros/aggregate')
