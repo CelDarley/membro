@@ -289,8 +289,8 @@ async function openCreate() {
   initial['Liderança'] = ''
   initial['Grupos identitários'] = ''
   formData.value = initial
-  await Promise.all([ensureMunicipiosMG(), ensureLookupOptions(), ensureMemberOptions()])
   showModal.value = true
+  Promise.all([ensureMunicipiosMG(), ensureLookupOptions(), ensureMemberOptions()]).catch(()=>{})
 }
 
 async function openEdit(row: any) {
@@ -307,8 +307,8 @@ async function openEdit(row: any) {
   next['Liderança'] = next['Liderança'] || ''
   next['Grupos identitários'] = next['Grupos identitários'] || ''
   formData.value = next
-  await Promise.all([ensureMunicipiosMG(), ensureLookupOptions(), ensureMemberOptions()])
   showModal.value = true
+  Promise.all([ensureMunicipiosMG(), ensureLookupOptions(), ensureMemberOptions()]).catch(()=>{})
 }
 
 async function save() {
