@@ -13,7 +13,8 @@ def login():
 	user = User.query.filter_by(email=email).first()
 	if not user or not user.check_password(password):
 		return {'message': 'Credenciais inválidas'}, 401
-	access = create_access_token(identity={'id': user.id, 'role': user.role})
+	# identity deve ser string no Flask-JWT-Extended v4; incluir role em additional_claims
+	access = create_access_token(identity=str(user.id), additional_claims={'role': user.role})
 	return {
 		'user': { 'id': user.id, 'name': user.name, 'email': user.email, 'role': user.role },
 		'token': access,
@@ -23,8 +24,8 @@ def login():
 @bp.get('/me')
 @jwt_required()
 def me():
-	ident = get_jwt_identity() or {}
-	user = User.query.get(ident.get('id')) if ident else None
+	ident = get_jwt_identity()
+	user = User.query.get(int(ident)) if ident else None
 	if not user:
 		return {'user': None}, 200
 	return {'user': { 'id': user.id, 'name': user.name, 'email': user.email, 'role': user.role }} 

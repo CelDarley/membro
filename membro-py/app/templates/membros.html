@@ -62,7 +62,7 @@
 	function token(){ return localStorage.getItem('token') || '' }
 	function auth(){ return token() ? { 'Authorization': 'Bearer '+token() } : {} }
 	function decodeJwtPayload(){ try{ const t=token(); if(!t) return {}; const p=t.split('.')[1]; const pad=(s)=>s.padEnd(s.length+((4-(s.length%4))%4),'='); return JSON.parse(atob(p.replace(/-/g,'+').replace(/_/g,'/')));}catch{return{}} }
-	function isAdmin(){ const p=decodeJwtPayload(); const sub=p.sub||{}; return (sub.role||'').toLowerCase()==='admin' }
+	function isAdmin(){ const p=decodeJwtPayload(); const role=(p.role||((p.sub||{}).role)||'').toLowerCase(); return role==='admin' }
 
 	let currentId = null; let currentData = null;
 	const fields = [
@@ -82,7 +82,7 @@
 		guard()
 		const q = document.getElementById('q').value
 		const r = await fetch(`/api/membros?page=${page}&per_page=20&q=${encodeURIComponent(q)}`, { headers: { 'Content-Type':'application/json', ...auth() } })
-		if(r.status===401){ localStorage.removeItem('token'); location.href='/login'; return }
+		if(r.status===401||r.status===422){ localStorage.removeItem('token'); location.href='/login'; return }
 		const data = await r.json()
 		show(data.data || [])
 	}

@@ -85,5 +85,23 @@ def import_membros(path):
 	db.session.commit()
 	click.echo(f'Importados: {ins}')
 
+@app.cli.command('seed-demo')
+@with_appcontext
+def seed_demo():
+	# cria alguns membros de exemplo
+	if Membro.query.count() > 0:
+		click.echo('Já existem membros, não será duplicado.')
+		return
+	m1 = Membro(nome='WILSON PENIN COUTO', sexo='Masculino', concurso='2001', cargo_efetivo='Promotor', email_pessoal='wilson@example.com', comarca_lotacao='BELO HORIZONTE')
+	m2 = Membro(nome='WESLEY LEITE VAZ', sexo='Masculino', concurso='2002', cargo_efetivo='Promotor', email_pessoal='wesley@example.com', comarca_lotacao='BELO HORIZONTE')
+	m3 = Membro(nome='VANESSA CAMPOLINA REBELLO HORTA', sexo='Feminino', concurso='2003', cargo_efetivo='Promotora', email_pessoal='vanessa@example.com', comarca_lotacao='CONTAGEM')
+	db.session.add_all([m1,m2,m3])
+	db.session.commit()
+	# relacionamentos (amigos no MP)
+	m1.amigos.append(m2)
+	m1.amigos.append(m3)
+	db.session.commit()
+	click.echo('Seed de membros concluído com 3 registros e relacionamentos.')
+
 if __name__ == '__main__':
 	app.run(host='0.0.0.0', port=8000, debug=True) 
