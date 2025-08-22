@@ -1,0 +1,72 @@
+<!doctype html>
+<html>
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>Membros</title>
+	<style>
+		body { font-family: system-ui, sans-serif; padding: 16px; }
+		.toolbar { display:flex; gap:8px; align-items:center; margin-bottom:12px }
+		.input { padding: 8px; border:1px solid #cbd5e1; border-radius:6px }
+		.btn { padding: 8px 12px; border: 1px solid #334155; background: #334155; color: #fff; border-radius: 6px; cursor:pointer }
+		.table { border-collapse: collapse; width:100% }
+		.table th, .table td { border:1px solid #e2e8f0; padding:8px; font-size: 14px }
+		.modal { position: fixed; inset:0; background: rgba(0,0,0,.5); display:none; align-items:center; justify-content:center }
+		.modal-inner { background: #fff; border-radius:8px; padding: 16px; width: 90%; max-width: 900px; max-height: 80vh; overflow: auto }
+	</style>
+</head>
+<body>
+	<div class="toolbar">
+		<input id="q" class="input" placeholder="Buscar..." />
+		<button class="btn" onclick="search()">Pesquisar</button>
+		<a class="btn" href="/login" style="margin-left:auto">Sair</a>
+	</div>
+	<table class="table" id="tbl"><thead><tr>
+		<th>#</th>
+		<th>Membro</th>
+		<th>Sexo</th>
+		<th>Concurso</th>
+		<th>Cargo efetivo</th>
+		<th>eMail pessoal</th>
+		<th>Ações</th>
+	</tr></thead><tbody></tbody></table>
+
+	<div class="modal" id="modal">
+		<div class="modal-inner">
+			<div style="display:flex; justify-content:space-between"><strong>Detalhes</strong><button class="btn" onclick="closeModal()">Fechar</button></div>
+			<pre id="pre" style="white-space:pre-wrap"></pre>
+		</div>
+	</div>
+
+	<script>
+	function token(){ return localStorage.getItem('token') || '' }
+	function auth(){ return token() ? { 'Authorization': 'Bearer '+token() } : {} }
+	function show(rows){
+		const tbody = document.querySelector('#tbl tbody');
+		tbody.innerHTML = ''
+		for(const r of rows){
+			const tr = document.createElement('tr')
+			tr.innerHTML = `<td>${r.id}</td><td>${r.data['Membro']||''}</td><td>${r.data['Sexo']||''}</td><td>${r.data['Concurso']||''}</td><td>${r.data['Cargo efetivo']||''}</td><td>${r.data['eMail pessoal']||''}</td><td><button class='btn' onclick='openModal(${r.id})'>Ver</button></td>`
+			tbody.appendChild(tr)
+		}
+	}
+	async function search(page=1){
+		const q = document.getElementById('q').value
+		const r = await fetch(`/api/membros?page=${page}&per_page=20&q=${encodeURIComponent(q)}`, { headers: { 'Content-Type':'application/json', ...auth() } })
+		if(r.status===401){ location.href='/login'; return }
+		const data = await r.json()
+		show(data.data || [])
+	}
+	async function openModal(id){
+		const q = document.getElementById('q').value
+		const r = await fetch(`/api/membros?page=1&per_page=1&q=${encodeURIComponent(q)}`, { headers: { 'Content-Type':'application/json', ...auth() } })
+		const data = await r.json()
+		const row = (data.data||[]).find(x=>x.id==id)
+		document.getElementById('pre').textContent = JSON.stringify(row?.data||{}, null, 2)
+		document.getElementById('modal').style.display='flex'
+	}
+	function closeModal(){ document.getElementById('modal').style.display='none' }
+	search()
+	</script>
+</body>
+</html> 
