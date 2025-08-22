@@ -68,6 +68,7 @@ const showFullscreen = ref(false)
 const showModal = ref(false)
 const editingId = ref<number | null>(null)
 const formData = ref<Record<string, any>>({})
+const saving = ref(false)
 
 // controle de permissão
 const isAdmin = ref(false)
@@ -318,14 +319,25 @@ async function openEdit(row: any) {
 }
 
 async function save() {
-  const payload = { data: formData.value }
-  if (editingId.value) {
-    await api.put(`/membros/${editingId.value}`, payload)
-  } else {
-    await api.post('/membros', payload)
+  if (saving.value) return
+  saving.value = true
+  try {
+    setAuthTokenFromStorage()
+    const payload = { data: formData.value }
+    if (editingId.value) {
+      await api.put(`/membros/${editingId.value}`, payload)
+    } else {
+      await api.post('/membros', payload)
+    }
+    showModal.value = false
+    await fetchReports()
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || e?.message || 'Falha ao salvar'
+    alert(`Erro: ${msg}`)
+    console.error('Salvar membro falhou:', e)
+  } finally {
+    saving.value = false
   }
-  showModal.value = false
-  await fetchReports()
 }
 
 function closeModal() {
@@ -941,7 +953,7 @@ onMounted(() => {
             <!-- fim campos adicionais -->
 
             <div style="display:flex; gap:8px">
-              <button v-if="isAdmin" type="submit" class="btn">Salvar</button>
+              <button v-if="isAdmin" type="submit" class="btn" :disabled="saving">{{ saving ? 'Salvando...' : 'Salvar' }}</button>
               <button type="button" class="btn btn-outline" @click="closeModal">{{ isAdmin ? 'Cancelar' : 'Fechar' }}</button>
             </div>
           </form>
