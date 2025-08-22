@@ -54,37 +54,15 @@ body {
   font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
 }
 
-.container {
-  max-width: 1120px;
-  margin: 0 auto;
-  padding: 16px;
-}
+/* garantir centralização do container em todo lugar */
+.container { max-width: 1120px; margin: 0 auto; padding: 16px; }
 
-.container-fluid {
-  max-width: none;
-  width: 100%;
-  margin: 0;
-  padding: 0;
-}
+/* espaçamento superior global do conteúdo */
+.page-wrap { max-width: 1120px; margin: 20px auto 0; padding: 0 12px; }
 
-/* Centralização e margem superior do conteúdo principal */
-.page-wrap {
-  max-width: 1120px;
-  margin: 20px auto 0;
-  padding: 0 12px;
-}
-
-.report-area { width: calc(100vw - 24px); margin: 0 12px; }
-.report-scroll { overflow-x: auto; }
-
-.header {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: var(--card-bg);
-  border-bottom: 1px solid var(--border);
-}
-.header-inner { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px !important; }
+/* header fix: não colar no topo visualmente */
+.header { position: sticky; top: 0; z-index: 10; background: var(--card-bg); border-bottom: 1px solid var(--border); }
+.header-inner { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px !important; max-width: 1120px; margin: 0 auto; }
 .nav { display: flex; gap: 12px; align-items: center; }
 .nav a { color: var(--text); text-decoration: none; opacity: 0.9; }
 .nav a.router-link-active { font-weight: 600; opacity: 1; }
