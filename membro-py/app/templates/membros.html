@@ -86,6 +86,7 @@
 					<div class="name" id="menuName">Usuário</div>
 					<div class="email" id="menuEmail">email@example.com</div>
 				</div>
+				<div class="item"><button class="btn" style="width:100%" onclick="openSelfPwd()">Trocar senha</button></div>
 				<div class="item"><button class="btn" style="width:100%" onclick="doLogout()">Sair</button></div>
 			</div>
 		</div>
@@ -221,6 +222,22 @@
 				<button class="btn" onclick="clearFilterCurrent()">Limpar filtro desta coluna</button>
 			</div>
 			<div id="filterOptions" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap:8px"></div>
+		</div>
+	</div>
+
+	<div class="modal" id="selfPwdModal">
+		<div class="modal-inner">
+			<div style="display:flex; justify-content:space-between; align-items:center"><strong>Trocar minha senha</strong>
+				<div style="display:flex; gap:8px">
+					<button class="btn" onclick="saveSelfPwd()">Salvar</button>
+					<button class="btn" onclick="closeSelfPwd()">Fechar</button>
+				</div>
+			</div>
+			<div class="row" style="margin-top:8px">
+				<input id="selfPwdCurrent" class="input" type="password" placeholder="Senha atual" />
+				<input id="selfPwdNew" class="input" type="password" placeholder="Nova senha" />
+				<input id="selfPwdConfirm" class="input" type="password" placeholder="Confirmar nova senha" />
+			</div>
 		</div>
 	</div>
 
@@ -535,6 +552,10 @@
 	async function saveUserPwd(){ if(!pwdUserId){ closeUserPwdModal(); return } const password=document.getElementById('pwdNew').value; const confirm=document.getElementById('pwdConfirm').value; if(!password){ toast('Informe a nova senha','error'); return } if(password!==confirm){ toast('Confirmação não confere','error'); return } const r=await fetch(`/api/users/${pwdUserId}`, { method:'PUT', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify({ password, confirm }) }); if(r.ok){ toast('Senha alterada','success'); closeUserPwdModal() } else { let msg='Falha ao alterar senha'; try{ const d=await r.json(); if(d?.message) msg=d.message }catch{} toast(msg,'error') } }
 	async function userDelete(id){ if(!confirm('Excluir este usuário?')) return; const r=await fetch(`/api/users/${id}`, { method:'DELETE', headers:{ ...auth() } }); if(r.ok){ toast('Usuário excluído','success'); usersLoad() } else { toast('Falha ao excluir','error') } }
 	async function usersCreate(){ const name=document.getElementById('uName').value.trim(); const email=document.getElementById('uEmail').value.trim(); const role=document.getElementById('uRole').value; const phone=document.getElementById('uPhone').value.trim(); const password=document.getElementById('uPass').value; const confirm=document.getElementById('uConfirm').value; const two_factor_enabled=document.getElementById('u2fa').checked; const active=document.getElementById('uActive').checked; const r=await fetch('/api/users', { method:'POST', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify({ name,email,role,phone,password,confirm,two_factor_enabled,active }) }); if(r.ok){ toast('Usuário criado','success'); document.getElementById('uName').value=''; document.getElementById('uEmail').value=''; document.getElementById('uPhone').value=''; document.getElementById('uPass').value=''; document.getElementById('uConfirm').value=''; document.getElementById('u2fa').checked=false; document.getElementById('uActive').checked=true; usersLoad() } else { let msg='Falha ao criar usuário'; try{ const d=await r.json(); if(d?.message) msg=d.message }catch{} toast(msg,'error') } }
+
+	function openSelfPwd(){ document.getElementById('selfPwdCurrent').value=''; document.getElementById('selfPwdNew').value=''; document.getElementById('selfPwdConfirm').value=''; document.getElementById('selfPwdModal').style.display='flex' }
+	function closeSelfPwd(){ document.getElementById('selfPwdModal').style.display='none' }
+	async function saveSelfPwd(){ const current_password=document.getElementById('selfPwdCurrent').value; const new_password=document.getElementById('selfPwdNew').value; const confirm=document.getElementById('selfPwdConfirm').value; if(!current_password||!new_password){ toast('Informe as senhas','error'); return } if(new_password!==confirm){ toast('Confirmação não confere','error'); return } const r=await fetch('/api/auth/change-password', { method:'POST', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify({ current_password, new_password, confirm }) }); if(r.ok){ toast('Senha alterada','success'); closeSelfPwd() } else { let msg='Falha ao alterar senha'; try{ const d=await r.json(); if(d?.message) msg=d.message }catch{} toast(msg,'error') } }
 
 	renderHeaderFilters(); showTab('table'); loadMe(); search(1)
 	</script>
