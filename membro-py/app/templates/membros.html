@@ -14,11 +14,11 @@
 		.table th, .table td { border:1px solid #e2e8f0; padding:8px; font-size: 14px }
 		.table th { background:#f1f5f9; cursor:pointer; user-select:none }
 		.modal { position: fixed; inset:0; background: rgba(0,0,0,.5); display:none; align-items:center; justify-content:center }
-		.modal-inner { background: #fff; border-radius:8px; padding: 16px; width: 96%; max-width: 1200px; max-height: 80vh; overflow: auto }
+		.modal-inner { background: #fff; border-radius:8px; padding: 16px; width: 98%; max-width: 1600px; max-height: 84vh; overflow: auto; overflow-x: hidden }
 		.grid { display:grid; gap:12px; grid-template-columns: repeat(auto-fit, minmax(320px,1fr)); align-items: stretch }
 		.card { border:1px solid #e2e8f0; border-radius:8px }
 		.card-body { padding: 12px }
-		.form-grid { display:grid; gap:12px; grid-template-columns: repeat(auto-fit, minmax(320px,1fr)) }
+		.form-grid { display:grid; gap:12px; grid-template-columns: repeat(auto-fit, minmax(360px,1fr)) }
 		.label { font-weight:600 }
 		.row { display:grid; gap:8px }
 		/* abas */
@@ -161,8 +161,12 @@
 		document.getElementById('modalBody').innerHTML = 'Carregando...'
 		document.getElementById('btnSave').style.display = isAdmin() ? 'inline-block' : 'none'
 		document.getElementById('modal').style.display='flex'
-		const r = await fetch(`/api/membros/${id}`, { headers: { 'Content-Type':'application/json', ...auth() } })
-		const row = await r.json(); currentData = row.data || {}
+		try{
+			const r = await fetch(`/api/membros/${id}`, { headers: { 'Content-Type':'application/json', ...auth() } })
+			if(r.status===401){ localStorage.removeItem('token'); location.href='/login'; return }
+			if(!r.ok){ document.getElementById('modalBody').textContent = 'Falha ao carregar detalhes'; return }
+			const row = await r.json(); currentData = (row && (row.data||row)) || {}
+		}catch(e){ document.getElementById('modalBody').textContent = 'Erro ao carregar detalhes'; return }
 		renderModal()
 	}
 	function renderModal(){
