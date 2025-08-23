@@ -20,7 +20,7 @@ def cadastros_page():
 	<style> body{font-family:system-ui,sans-serif;padding:16px} .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:12px} .btn{padding:8px 12px;border:1px solid #334155;background:#334155;color:#fff;border-radius:6px;cursor:pointer} .input{padding:8px;border:1px solid #cbd5e1;border-radius:6px} table{border-collapse:collapse;width:100%} th,td{border:1px solid #e2e8f0;padding:8px;font-size:14px} th{background:#f1f5f9} .row{display:flex;gap:8px;align-items:center;margin:8px 0} select{padding:8px;border:1px solid #cbd5e1;border-radius:6px} </style>
 	</head><body>
 	<div class="toolbar">
-		<select id="type">
+		<select id="type" onchange="loadList()">
 			<option value="concurso">Concurso</option>
 			<option value="cargo_efetivo">Cargo efetivo</option>
 			<option value="titularidade">Titularidade</option>
@@ -31,9 +31,7 @@ def cadastros_page():
 			<option value="estado_origem">Estado de origem</option>
 			<option value="grupos_identitarios">Grupos identitários</option>
 		</select>
-		<input id="q" class="input" placeholder="Buscar..." />
-		<button class="btn" onclick="loadList()">Carregar</button>
-		<button class="btn" onclick="populate()">Popular a partir dos membros</button>
+		<input id="q" class="input" placeholder="Buscar..." oninput="loadList()" />
 		<a class="btn" href="/">Voltar</a>
 	</div>
 	<div class="row">
@@ -48,8 +46,8 @@ def cadastros_page():
 	async function createVal(){ const type=document.getElementById('type').value; const value=document.getElementById('newVal').value.trim(); if(!value) return; const r=await fetch('/api/lookups', { method:'POST', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify({ type, value }) }); if(r.ok){ document.getElementById('newVal').value=''; loadList() } }
 	async function save(id){ const inp = document.querySelector(`[data-id="${id}"]`); const value=inp.value.trim(); const r=await fetch(`/api/lookups/${id}`, { method:'PUT', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify({ value }) }); if(r.ok){ loadList() } }
 	async function removeVal(id){ if(!confirm('Excluir este valor?')) return; const r=await fetch(`/api/lookups/${id}`, { method:'DELETE', headers:{ ...auth() } }); if(r.ok){ loadList() } }
-	async function populate(){ const r=await fetch('/api/lookups/populate-from-membros', { method:'POST', headers:{ ...auth() } }); if(r.ok){ loadList() } }
-	loadList()
+	async function populate(){ try{ await fetch('/api/lookups/populate-from-membros', { method:'POST', headers:{ ...auth() } }) }catch(e){} }
+	(async function init(){ await populate(); loadList() })()
 	</script>
 	</body></html>'''
 	return render_template_string(html) 
