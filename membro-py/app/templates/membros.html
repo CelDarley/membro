@@ -48,6 +48,7 @@
 		<datalist id="suggestions"></datalist>
 		<button class="btn" onclick="search()">Pesquisar</button>
 		<button class="btn" onclick="clearAllFilters()" title="Limpar filtros">Limpar filtros</button>
+		<a id="btnCad" class="btn" href="/cadastros" style="display:none">Cadastros</a>
 		<div class="profile" id="profile">
 			<button class="profile-btn" onclick="toggleProfile()">
 				<div class="avatar" id="avatar">?</div>
@@ -146,7 +147,7 @@
 
 	function toggleProfile(){ const m=document.getElementById('profileMenu'); m.style.display = (m.style.display==='block'?'none':'block') }
 	document.addEventListener('click', (e)=>{ const p=document.getElementById('profile'); if(!p.contains(e.target)) document.getElementById('profileMenu').style.display='none' })
-	function renderProfile(){ const n=(currentUser?.name||'').trim(); const em=(currentUser?.email||'').trim(); const ini=(n?n[0]: (em?em[0]:'?')).toUpperCase(); document.getElementById('avatar').textContent=ini; document.getElementById('profileName').textContent=n||em||'Usuário'; document.getElementById('menuName').textContent=n||'Usuário'; document.getElementById('menuEmail').textContent=em||'' }
+	function renderProfile(){ const n=(currentUser?.name||'').trim(); const em=(currentUser?.email||'').trim(); const ini=(n?n[0]: (em?em[0]:'?')).toUpperCase(); document.getElementById('avatar').textContent=ini; document.getElementById('profileName').textContent=n||em||'Usuário'; document.getElementById('menuName').textContent=n||'Usuário'; document.getElementById('menuEmail').textContent=em||''; const btnCad=document.getElementById('btnCad'); btnCad.style.display = (decodeJwtPayload()?.role||'').toLowerCase()==='admin' ? 'inline-block' : 'none' }
 	async function loadMe(){ try{ const r=await fetch('/api/auth/me', { headers:{ ...auth() } }); const d=await r.json(); currentUser = d?.user||null; renderProfile() }catch{} }
 	function doLogout(){ localStorage.removeItem('token'); location.href='/login' }
 

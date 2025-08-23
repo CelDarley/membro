@@ -57,4 +57,12 @@ class Membro(db.Model):
 		secondaryjoin=id == membro_amigos.c.amigo_id,
 		backref='amigos_de',
 		lazy='dynamic',
-	) 
+	)
+
+
+class Lookup(db.Model):
+	__tablename__ = 'lookups'
+	id = db.Column(MySQLBigInt(unsigned=True), primary_key=True)
+	type = db.Column(db.String(64), index=True, nullable=False)
+	value = db.Column(db.String(255), nullable=False)
+	__table_args__ = (db.UniqueConstraint('type', 'value', name='uq_lookups_type_value'),) 
