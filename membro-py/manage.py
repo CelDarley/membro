@@ -54,18 +54,53 @@ def import_membros(path, truncate):
 		db.session.commit()
 	rows = []
 	ext = os.path.splitext(path)[1].lower()
+	# conjuntos para detectar linha de cabeçalho
+	expected = set([
+		'membro','mamp','sexo','data de nascimento','telefone celular','email','e-mail','concurso','titularidade','cargo efetivo','comarca lotacao','unidade lotacao','telefone unidade','cargo especial'
+	])
 	if ext == '.xlsx':
 		from openpyxl import load_workbook
 		wb = load_workbook(path)
 		sheet = wb.active
-		headers = [str(c.value or '').strip() for c in next(sheet.iter_rows(min_row=1, max_row=1))[0:]]
-		rows = list(sheet.iter_rows(min_row=2, values_only=True))
+		# detectar linha de cabeçalho nas primeiras 20 linhas
+		header_row = None
+		max_scan = min(20, sheet.max_row)
+		for r in range(1, max_scan+1):
+			vals = [str(c.value or '').strip() for c in next(sheet.iter_rows(min_row=r, max_row=r))[0:]]
+			norms = [_norm(v) for v in vals]
+			matches = sum(1 for v in norms if v in expected)
+			if matches >= 3:
+				header_row = r
+				headers = vals
+				break
+		if not header_row:
+			# fallback: primeira linha
+			headers = [str(c.value or '').strip() for c in next(sheet.iter_rows(min_row=1, max_row=1))[0:]]
+			data_iter = sheet.iter_rows(min_row=2, values_only=True)
+		else:
+			data_iter = sheet.iter_rows(min_row=header_row+1, values_only=True)
+		for row in data_iter:
+			rows.append(list(row))
 	elif ext == '.xls':
 		import xlrd
 		wb = xlrd.open_workbook(path)
 		sheet = wb.sheet_by_index(0)
-		headers = [str(sheet.cell_value(0, col) or '').strip() for col in range(sheet.ncols)]
-		for r in range(1, sheet.nrows):
+		header_row = None
+		max_scan = min(20, sheet.nrows)
+		for r in range(0, max_scan):
+			vals = [str(sheet.cell_value(r, col) or '').strip() for col in range(sheet.ncols)]
+			norms = [_norm(v) for v in vals]
+			matches = sum(1 for v in norms if v in expected)
+			if matches >= 3:
+				header_row = r
+				headers = vals
+				break
+		if header_row is None:
+			headers = [str(sheet.cell_value(0, col) or '').strip() for col in range(sheet.ncols)]
+			start = 1
+		else:
+			start = header_row + 1
+		for r in range(start, sheet.nrows):
 			rows.append([sheet.cell_value(r, c) for c in range(sheet.ncols)])
 	else:
 		click.echo('Formato não suportado. Use .xls ou .xlsx')
@@ -78,11 +113,11 @@ def import_membros(path, truncate):
 	# aliases por campo (normalizados)
 	aliases = {
 		'nome': ['membro','nome'],
-		'sexo': ['sexo','genero','genero biologico','genero biológico','gênero'],
-		'concurso': ['concurso'],
+		'sexo': ['sexo','genero','genero biologico','genero biologico','genero biológico','genero biologico ','gênero'],
+		'concurso': ['concurso','classificacao','classificação'],
 		'cargo_efetivo': ['cargo efetivo','cargo_efetivo','cargo atual','cargo'],
 		'titularidade': ['titularidade'],
-		'email_pessoal': ['email','e-mail','e mail','e-mail pessoal','email pessoal','mail'],
+		'email_pessoal': ['email','e-mail','e mail','e-mail pessoal','email pessoal','mail','email institucional','e-mail institucional'],
 		'cargo_especial': ['cargo especial'],
 		'telefone_unidade': ['telefone unidade','tel unidade','telefone da unidade','telefone trabalho'],
 		'telefone_celular': ['telefone celular','celular','telefone movel','telefone móvel'],
