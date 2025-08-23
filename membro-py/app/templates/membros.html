@@ -62,6 +62,7 @@
 		/* elevar camadas das modais e colocar a modal de "Ver" acima de tudo */
 		.modal { z-index: 10000 }
 		#modal { z-index: 10002 }
+		#userPwdModal { z-index: 10002 }
 		.icon-btn { border:none; background:transparent; cursor:pointer; padding:0; margin-left:8px; display:inline-flex; align-items:center; vertical-align:middle }
 		.icon-btn svg { width:16px; height:16px; color:#64748b }
 		.icon-btn:hover svg { color:#334155 }
@@ -186,6 +187,21 @@
 				</div>
 			</div>
 			<div id="modalBody"></div>
+		</div>
+	</div>
+
+	<div class="modal" id="userPwdModal">
+		<div class="modal-inner">
+			<div style="display:flex; justify-content:space-between; align-items:center"><strong>Trocar senha</strong>
+				<div style="display:flex; gap:8px">
+					<button class="btn" onclick="saveUserPwd()">Salvar</button>
+					<button class="btn" onclick="closeUserPwdModal()">Fechar</button>
+				</div>
+			</div>
+			<div class="row" style="margin-top:8px">
+				<input id="pwdNew" class="input" type="password" placeholder="Nova senha" />
+				<input id="pwdConfirm" class="input" type="password" placeholder="Confirmar nova senha" />
+			</div>
 		</div>
 	</div>
 
@@ -508,9 +524,13 @@
 	async function lkDelete(id){ if(!confirm('Excluir este valor?')) return; const r=await fetch(`/api/lookups/${id}`, { method:'DELETE', headers:{ ...auth() } }); if(r.ok){ toast('Excluído', 'success'); lkLoadList() } else { toast('Falha ao excluir', 'error') } }
 	async function lkInit(){ await lkPopulate(); lkLoadList() }
 
-	async function usersLoad(){ const q=document.getElementById('uQ').value.trim(); const r=await fetch(`/api/users?q=${encodeURIComponent(q)}`, { headers:{ ...auth() } }); const d=await r.json(); const tb=document.getElementById('uBody'); tb.innerHTML=''; for(const it of (d.data||[])){ const tr=document.createElement('tr'); tr.innerHTML=`<td><input class='input' value="${String(it.name).replace(/\"/g,'&quot;')}" data-k='name' data-id='${it.id}' /></td><td><input class='input' value="${String(it.email).replace(/\"/g,'&quot;')}" data-k='email' data-id='${it.id}' /></td><td><select class='input' data-k='role' data-id='${it.id}'><option value='user' ${it.role==='user'?'selected':''}>Comum</option><option value='admin' ${it.role==='admin'?'selected':''}>Admin</option></select></td><td><input class='input' value="${String(it.phone||'').replace(/\"/g,'&quot;')}" data-k='phone' data-id='${it.id}' /></td><td><input type='checkbox' ${it.two_factor_enabled?'checked':''} data-k='two_factor_enabled' data-id='${it.id}' /></td><td><span>${it.active?'Ativo':'Inativo'}</span></td><td><button class='btn' onclick='userSave(${it.id})'>Salvar</button> <button class='btn' onclick='userToggle(${it.id})'>Ativar/Inativar</button> <button class='btn' onclick='userDelete(${it.id})'>Excluir</button></td>`; tb.appendChild(tr) } }
+	async function usersLoad(){ const q=document.getElementById('uQ').value.trim(); const r=await fetch(`/api/users?q=${encodeURIComponent(q)}`, { headers:{ ...auth() } }); const d=await r.json(); const tb=document.getElementById('uBody'); tb.innerHTML=''; for(const it of (d.data||[])){ const tr=document.createElement('tr'); tr.innerHTML=`<td><input class='input' value="${String(it.name).replace(/\"/g,'&quot;')}" data-k='name' data-id='${it.id}' /></td><td><input class='input' value="${String(it.email).replace(/\"/g,'&quot;')}" data-k='email' data-id='${it.id}' /></td><td><select class='input' data-k='role' data-id='${it.id}'><option value='user' ${it.role==='user'?'selected':''}>Comum</option><option value='admin' ${it.role==='admin'?'selected':''}>Admin</option></select></td><td><input class='input' value="${String(it.phone||'').replace(/\"/g,'&quot;')}" data-k='phone' data-id='${it.id}' /></td><td><input type='checkbox' ${it.two_factor_enabled?'checked':''} data-k='two_factor_enabled' data-id='${it.id}' /></td><td><span>${it.active?'Ativo':'Inativo'}</span></td><td><button class='btn' onclick='userSave(${it.id})'>Salvar</button> <button class='btn' onclick='userToggle(${it.id})'>Ativar/Inativar</button> <button class='btn' onclick='userPwd(${it.id})'>Trocar senha</button> <button class='btn' onclick='userDelete(${it.id})'>Excluir</button></td>`; tb.appendChild(tr) } }
 	async function userSave(id){ const sel=(k)=>{ const el=document.querySelector(`[data-k=\"${k}\"][data-id=\"${id}\"]`); if(!el) return null; if(el.type==='checkbox') return el.checked; if(el.tagName==='SELECT') return el.value; return el.value }; const body={ name: sel('name'), email: sel('email'), role: sel('role'), phone: sel('phone'), two_factor_enabled: sel('two_factor_enabled') }; const r=await fetch(`/api/users/${id}`, { method:'PUT', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify(body) }); if(r.ok){ toast('Usuário salvo','success'); usersLoad() } else { toast('Falha ao salvar','error') } }
 	async function userToggle(id){ const r=await fetch(`/api/users/${id}/toggle-active`, { method:'POST', headers:{ ...auth() } }); if(r.ok){ toast('Status alterado','success'); usersLoad() } else { toast('Falha ao alterar status','error') } }
+	let pwdUserId=null;
+	function userPwd(id){ pwdUserId=id; document.getElementById('pwdNew').value=''; document.getElementById('pwdConfirm').value=''; document.getElementById('userPwdModal').style.display='flex' }
+	function closeUserPwdModal(){ document.getElementById('userPwdModal').style.display='none' }
+	async function saveUserPwd(){ if(!pwdUserId){ closeUserPwdModal(); return } const password=document.getElementById('pwdNew').value; const confirm=document.getElementById('pwdConfirm').value; if(!password){ toast('Informe a nova senha','error'); return } if(password!==confirm){ toast('Confirmação não confere','error'); return } const r=await fetch(`/api/users/${pwdUserId}`, { method:'PUT', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify({ password, confirm }) }); if(r.ok){ toast('Senha alterada','success'); closeUserPwdModal() } else { let msg='Falha ao alterar senha'; try{ const d=await r.json(); if(d?.message) msg=d.message }catch{} toast(msg,'error') } }
 	async function userDelete(id){ if(!confirm('Excluir este usuário?')) return; const r=await fetch(`/api/users/${id}`, { method:'DELETE', headers:{ ...auth() } }); if(r.ok){ toast('Usuário excluído','success'); usersLoad() } else { toast('Falha ao excluir','error') } }
 	async function usersCreate(){ const name=document.getElementById('uName').value.trim(); const email=document.getElementById('uEmail').value.trim(); const role=document.getElementById('uRole').value; const phone=document.getElementById('uPhone').value.trim(); const password=document.getElementById('uPass').value; const confirm=document.getElementById('uConfirm').value; const two_factor_enabled=document.getElementById('u2fa').checked; const active=document.getElementById('uActive').checked; const r=await fetch('/api/users', { method:'POST', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify({ name,email,role,phone,password,confirm,two_factor_enabled,active }) }); if(r.ok){ toast('Usuário criado','success'); document.getElementById('uName').value=''; document.getElementById('uEmail').value=''; document.getElementById('uPhone').value=''; document.getElementById('uPass').value=''; document.getElementById('uConfirm').value=''; document.getElementById('u2fa').checked=false; document.getElementById('uActive').checked=true; usersLoad() } else { let msg='Falha ao criar usuário'; try{ const d=await r.json(); if(d?.message) msg=d.message }catch{} toast(msg,'error') } }
 
