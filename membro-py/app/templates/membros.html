@@ -34,7 +34,7 @@
 </head>
 <body>
 	<div class="toolbar">
-		<input id="q" class="input" placeholder="Buscar..." list="suggestions" oninput="debouncedSuggest()" />
+		<input id="q" class="input" placeholder="Buscar..." list="suggestions" oninput="onMainInput()" />
 		<datalist id="suggestions"></datalist>
 		<button class="btn" onclick="search()">Pesquisar</button>
 		<button class="btn" onclick="clearAllFilters()" title="Limpar filtros">Limpar filtros</button>
@@ -212,9 +212,11 @@
 	}
 	function loadChartsIfNeeded(){ if(chartsLoaded) return; loadChartComarca(); loadChartCargo(); loadMap(); loadGraph(); chartsLoaded=true }
 
-	// Autocomplete de busca por nome
-	let suggestTimer = null
+	// Autocomplete + busca em tempo real
+	let suggestTimer = null, searchTimer = null
+	function onMainInput(){ debouncedSuggest(); debouncedSearch() }
 	function debouncedSuggest(){ clearTimeout(suggestTimer); suggestTimer = setTimeout(suggest, 200) }
+	function debouncedSearch(){ clearTimeout(searchTimer); searchTimer = setTimeout(()=>search(1), 200) }
 	async function suggest(){
 		const q = document.getElementById('q').value.trim(); if(!q) { document.getElementById('suggestions').innerHTML=''; return }
 		const r = await fetch(`/api/membros/suggest?q=${encodeURIComponent(q)}`, { headers: { ...auth() } })
@@ -222,7 +224,7 @@
 		list.innerHTML = (data.values||[]).map(v=>`<option value="${String(v).replace(/"/g,'&quot;')}"></option>`).join('')
 	}
 
-	// Filtro por coluna (modal)
+	// Filtro por coluna (modal) com aplicação em tempo real
 	async function openFilterModal(label){
 		filterCurrentLabel = label; filterSelectedSet = new Set(columnFilters[label]||[])
 		document.getElementById('filterTitle').textContent = `Filtrar: ${label}`
@@ -243,15 +245,16 @@
 			box.appendChild(div)
 		}
 	}
-	function toggleFilterValue(val){ val=String(val); if(filterSelectedSet.has(val)) filterSelectedSet.delete(val); else filterSelectedSet.add(val) }
-	function applyFilterModal(){
+	function toggleFilterValue(val){
+		val=String(val); if(filterSelectedSet.has(val)) filterSelectedSet.delete(val); else filterSelectedSet.add(val)
 		const arr = Array.from(filterSelectedSet)
 		if(arr.length) columnFilters[filterCurrentLabel]=arr; else delete columnFilters[filterCurrentLabel]
-		closeFilterModal(); renderHeaderFilters(); search(1)
+		renderHeaderFilters(); debouncedSearch()
 	}
-	function clearFilterCurrent(){ delete columnFilters[filterCurrentLabel]; filterSelectedSet = new Set(); renderFilterOptions(); renderHeaderFilters() }
+	function applyFilterModal(){ closeFilterModal() }
+	function clearFilterCurrent(){ delete columnFilters[filterCurrentLabel]; filterSelectedSet = new Set(); renderFilterOptions(); renderHeaderFilters(); debouncedSearch() }
 	function closeFilterModal(){ document.getElementById('filterModal').style.display='none' }
-	function clearAllFilters(){ columnFilters = {}; renderHeaderFilters(); search(1) }
+	function clearAllFilters(){ columnFilters = {}; renderHeaderFilters(); debouncedSearch() }
 
 	async function loadChartComarca(){
 		guard()
