@@ -16,6 +16,8 @@
 		.table th, .table td { border:1px solid #e2e8f0; padding:8px; font-size: 14px; min-width: 160px; background: #fff }
 		.table th { background:#f1f5f9; cursor:pointer; user-select:none; position: sticky; top: 0; z-index: 5 }
 		.freeze-left { position: sticky; left: 0; z-index: 6; box-shadow: 2px 0 0 #e2e8f0; background: #fff }
+		/* garantir que o cabeçalho da primeira coluna também congele acima das demais */
+		.table th.freeze-left { left: 0; position: sticky; z-index: 10; background: #f1f5f9 }
 		.freeze-right { position: sticky; right: 0; z-index: 6; box-shadow: -2px 0 0 #e2e8f0; background: #fff }
 		/* modal, grids, abas, toasts, chips, suggest ... */
 		.modal { position: fixed; inset:0; background: rgba(0,0,0,.5); display:none; align-items:center; justify-content:center }
