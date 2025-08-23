@@ -18,6 +18,8 @@ class User(db.Model):
 	password_hash = db.Column(db.String(191), nullable=False)
 	role = db.Column(db.String(32), default='user', nullable=False)
 	two_factor_enabled = db.Column(db.Boolean, default=False)
+	phone = db.Column(db.String(50))
+	active = db.Column(db.Boolean, default=True, nullable=False)
 
 	def set_password(self, raw: str) -> None:
 		self.password_hash = generate_password_hash(raw)
