@@ -26,7 +26,8 @@ def list_users():
 @bp.post('/users')
 @jwt_required()
 def create_user():
-	if not is_admin():
+	admins_count = User.query.filter_by(role='admin').count()
+	if not is_admin() and admins_count > 0:
 		return { 'message': 'Apenas administradores.' }, 403
 	body = request.get_json() or {}
 	name = (body.get('name') or '').strip()
@@ -37,6 +38,8 @@ def create_user():
 	confirm = (body.get('confirm') or '').strip()
 	twofa = bool(body.get('two_factor_enabled'))
 	active = bool(body.get('active', True))
+	if admins_count == 0:
+		role = 'admin'
 	if not name or not email or not password or password != confirm or role not in ('user','admin'):
 		return { 'message': 'Dados inválidos' }, 422
 	if User.query.filter_by(email=email).first():
