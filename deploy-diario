@@ -1,0 +1,90 @@
+# Deploy diário (produção)
+
+## 1) Preparar no local
+- Commit e push
+```bash
+git add -A && git commit -m "feat/fix: descrição" && git push origin main
+```
+
+## 2) Atualizar no droplet
+- Conectar
+```bash
+ssh membro@SEU_IP
+```
+- Puxar código
+```bash
+cd ~/apps/membro && git pull
+```
+- Dependências e migrações (se houve mudanças de backend)
+```bash
+cd ~/apps/membro/membro-py
+source .venv/bin/activate
+# se tiver requirements.txt, use:
+# pip install -U -r requirements.txt
+# caso contrário, garanta libs pontuais (exemplos):
+# pip install -U Flask Flask-SQLAlchemy Flask-Migrate Flask-JWT-Extended PyMySQL python-dotenv gunicorn cryptography
+flask --app manage.py db upgrade
+deactivate
+```
+- Reiniciar serviço
+```bash
+sudo systemctl restart membro
+```
+
+## 3) Verificação rápida
+- Health local (gunicorn)
+```bash
+curl -i http://127.0.0.1:8000/api/health
+```
+- Logs (se algo falhar)
+```bash
+sudo journalctl -u membro -n 100 --no-pager
+```
+- Health pelo domínio
+```bash
+curl -i https://membros.catenasystem.com.br/api/health
+```
+
+## 4) Alterações de ambiente (quando necessário)
+- Editar `.env` do app
+```bash
+nano ~/apps/membro/membro-py/.env
+sudo systemctl restart membro
+```
+
+## 5) Alterações no Nginx (quando necessário)
+- Editar site e recarregar
+```bash
+sudo nano /etc/nginx/sites-available/membros.catenasystem.com.br
+sudo nginx -t && sudo systemctl reload nginx
+```
+- HTTPS (primeira vez)
+```bash
+sudo certbot --nginx -d membros.catenasystem.com.br --redirect -m seu-email@dominio.com --agree-tos -n
+```
+
+## 6) Backup do banco (antes de mudanças relevantes)
+```bash
+mysqldump --protocol=TCP -u membro -p -h 127.0.0.1 \
+  --single-transaction --quick --routines --triggers --no-tablespaces \
+  membro > ~/backup/membro_$(date +%F_%H%M).sql
+```
+
+## 7) Rollback rápido
+- Voltar código
+```bash
+cd ~/apps/membro && git log --oneline
+git reset --hard COMMIT_ANTERIOR
+sudo systemctl restart membro
+```
+- Evitar `db downgrade` em produção; prefira corrigir e redeploy.
+
+## 8) Dicas e troubleshooting
+- “Unexpected token '<'” no login: Nginx servindo HTML
+  - Ajustar server block para `proxy_pass http://127.0.0.1:8000;` e remover `default` de sites-enabled.
+- MySQL 8 + PyMySQL precisa de `cryptography`
+  - `pip install -U cryptography PyMySQL`
+- Usuário inativo ao logar
+  - Via SQL: `UPDATE users_py SET active=1 WHERE email='admin@trustme.com';`
+  - Ou pelo app (aba Usuários / botão Ativar)
+- Senha do DB com caracteres especiais: use URL-encode na `DATABASE_URL` ou altere para algo simples. 
