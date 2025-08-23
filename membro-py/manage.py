@@ -5,6 +5,7 @@ import click
 from app.db import db
 from app.models import User, Membro
 import os
+import unicodedata
 
 app = create_app()
 
@@ -23,6 +24,16 @@ def create_admin(name, email, password):
 	db.session.add(user)
 	db.session.commit()
 	click.echo(f'Admin criado: {email}')
+
+
+def _norm(s: str) -> str:
+	if s is None:
+		return ''
+	s = str(s)
+	s = unicodedata.normalize('NFD', s)
+	s = ''.join(ch for ch in s if unicodedata.category(ch) != 'Mn')
+	return s.strip().lower()
+
 
 @app.cli.command('import-membros')
 @click.argument('path')
@@ -60,53 +71,104 @@ def import_membros(path, truncate):
 		click.echo('Formato não suportado. Use .xls ou .xlsx')
 		return
 
-	idx = { h:i for i,h in enumerate(headers) }
+	# construir mapa de cabeçalhos normalizados
+	norm_headers = [_norm(h) for h in headers]
+	idx_by_norm = { h:i for i,h in enumerate(norm_headers) }
+
+	# aliases por campo (normalizados)
+	aliases = {
+		'nome': ['membro','nome'],
+		'sexo': ['sexo','genero','genero biologico','genero biológico','gênero'],
+		'concurso': ['concurso'],
+		'cargo_efetivo': ['cargo efetivo','cargo_efetivo','cargo atual','cargo'],
+		'titularidade': ['titularidade'],
+		'email_pessoal': ['email','e-mail','e mail','e-mail pessoal','email pessoal','mail'],
+		'cargo_especial': ['cargo especial'],
+		'telefone_unidade': ['telefone unidade','tel unidade','telefone da unidade','telefone trabalho'],
+		'telefone_celular': ['telefone celular','celular','telefone movel','telefone móvel'],
+		'unidade_lotacao': ['unidade lotacao','unidade lotação','lotacao','lotação','unidade'],
+		'comarca_lotacao': ['comarca lotacao','comarca lotação','comarca','cidade'],
+		'time_extraprofissionais': ['time de futebol e outros grupos extraprofissionais','time extraprofissionais','grupos extraprofissionais','time de futebol'],
+		'quantidade_filhos': ['quantidade de filhos','qtd filhos','qtde filhos','numero de filhos','n filhos'],
+		'nomes_filhos': ['nome dos filhos','nomes dos filhos'],
+		'estado_origem': ['estado de origem','uf origem','uf'],
+		'academico': ['academico','acadêmico'],
+		'pretensao_carreira': ['pretensao de movimentacao na carreira','pretensão de movimentação na carreira','pretensao carreira'],
+		'carreira_anterior': ['carreira anterior'],
+		'lideranca': ['lideranca','liderança'],
+		'grupos_identitarios': ['grupos identitarios','grupos identitários','grupo identitarios','grupo identitário'],
+		'amigos_ids': ['amigos no mp (ids)','amigos mp (ids)','amigos mp ids','amigos (ids)']
+	}
+
+	def find_idx(keys):
+		for k in keys:
+			i = idx_by_norm.get(_norm(k))
+			if i is not None:
+				return i
+		return None
+
+	map_idx = { field: find_idx(al) for field, al in aliases.items() }
+
+	def get(row, field):
+		i = map_idx.get(field)
+		if i is None:
+			return None
+		val = row[i]
+		if isinstance(val, str):
+			val = val.strip()
+		return val if val != '' else None
+
 	created = []
 	for r in rows:
-		def v(h):
-			i = idx.get(h)
-			val = (str(r[i]).strip() if i is not None and r[i] is not None else None)
-			return val
 		m = Membro(
-			nome = v('Membro') or v('Nome'),
-			sexo = v('Sexo'),
-			concurso = v('Concurso'),
-			cargo_efetivo = v('Cargo efetivo'),
-			titularidade = v('Titularidade'),
-			email_pessoal = v('eMail pessoal') or v('Email') or v('E-mail'),
-			cargo_especial = v('Cargo Especial'),
-			telefone_unidade = v('Telefone Unidade'),
-			telefone_celular = v('Telefone celular'),
-			unidade_lotacao = v('Unidade Lotação'),
-			comarca_lotacao = v('Comarca Lotação'),
-			time_extraprofissionais = v('Time de futebol e outros grupos extraprofissionais'),
-			quantidade_filhos = (int(float(v('Quantidade de filhos'))) if (v('Quantidade de filhos') or '').strip() not in ('', None) else None),
-			nomes_filhos = v('Nome dos filhos'),
-			estado_origem = (v('Estado de origem') or '')[:2] or None,
-			academico = v('Acadêmico') or v('Academico'),
-			pretensao_carreira = v('Pretensão de movimentação na carreira') or v('Pretensao de movimentacao na carreira'),
-			carreira_anterior = v('Carreira anterior'),
-			lideranca = v('Liderança') or v('Lideranca'),
-			grupos_identitarios = v('Grupos identitários') or v('Grupos identitarios'),
+			nome = get(r,'nome'),
+			sexo = get(r,'sexo'),
+			concurso = str(get(r,'concurso') or '') or None,
+			cargo_efetivo = get(r,'cargo_efetivo'),
+			titularidade = get(r,'titularidade'),
+			email_pessoal = get(r,'email_pessoal'),
+			cargo_especial = get(r,'cargo_especial'),
+			telefone_unidade = str(get(r,'telefone_unidade') or '') or None,
+			telefone_celular = str(get(r,'telefone_celular') or '') or None,
+			unidade_lotacao = get(r,'unidade_lotacao'),
+			comarca_lotacao = get(r,'comarca_lotacao'),
+			time_extraprofissionais = get(r,'time_extraprofissionais'),
+			quantidade_filhos = (int(float(get(r,'quantidade_filhos'))) if (get(r,'quantidade_filhos') not in (None,'')) else None),
+			nomes_filhos = get(r,'nomes_filhos'),
+			estado_origem = (str(get(r,'estado_origem') or '')[:2].upper() or None),
+			academico = get(r,'academico'),
+			pretensao_carreira = get(r,'pretensao_carreira'),
+			carreira_anterior = get(r,'carreira_anterior'),
+			lideranca = get(r,'lideranca'),
+			grupos_identitarios = get(r,'grupos_identitarios'),
 		)
 		db.session.add(m)
-		created.append((m, {h:(v(h) if h in idx else None) for h in headers}))
+		created.append((m, r))
 	db.session.commit()
-	# relacionamentos por IDs se houver coluna
-	for m, raw in created:
-		raw_ids = (raw.get('Amigos no MP (IDs)') or '').strip()
-		if not raw_ids:
-			continue
-		ids = [int(x) for x in filter(None, [s.strip() for s in raw_ids.replace(';',',').replace('|',',').split(',')]) if x.isdigit()]
-		if not ids:
-			continue
-		# busca por id
-		friends = Membro.query.filter(Membro.id.in_(ids)).all()
-		for f in friends:
-			if f.id != m.id and f not in m.amigos:
-				m.amigos.append(f)
-	db.session.commit()
+
+	# relacionamentos por IDs
+	amigos_col = map_idx.get('amigos_ids')
+	if amigos_col is not None:
+		for m, row in created:
+			raw_ids = row[amigos_col]
+			if raw_ids is None:
+				continue
+			if not isinstance(raw_ids, str):
+				raw_ids = str(raw_ids)
+			raw_ids = raw_ids.strip()
+			if not raw_ids:
+				continue
+			ids = [int(x) for x in filter(None, [s.strip() for s in raw_ids.replace(';',',').replace('|',',').split(',')]) if x.isdigit()]
+			if not ids:
+				continue
+			friends = Membro.query.filter(Membro.id.in_(ids)).all()
+			for f in friends:
+				if f.id != m.id and f not in m.amigos:
+					m.amigos.append(f)
+		db.session.commit()
+
 	click.echo(f'Importados: {len(created)} (com relacionamentos quando informados)')
+
 
 @app.cli.command('seed-demo')
 @click.option('--force', is_flag=True, help='Limpa as tabelas antes de inserir exemplos')
