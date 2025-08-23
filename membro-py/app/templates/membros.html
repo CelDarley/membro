@@ -28,6 +28,8 @@
 		/* paginação */
 		.pager { display:flex; gap:8px; align-items:center; justify-content:flex-end; margin-top:8px }
 		.pager .btn { background:#64748b; border-color:#64748b }
+		/* indicador de filtro ativo */
+		.filter-badge { margin-left:6px; background:#334155; color:#fff; border-radius:999px; font-size:11px; padding:2px 6px; }
 	</style>
 </head>
 <body>
@@ -111,6 +113,15 @@
 
 	function filtersParam(){ try{ return encodeURIComponent(JSON.stringify(columnFilters||{})) }catch{ return '' } }
 
+	function renderHeaderFilters(){
+		const ths = document.querySelectorAll('#tbl thead th[data-label]')
+		ths.forEach(th=>{
+			const label = th.getAttribute('data-label')
+			const active = !!(columnFilters[label] && columnFilters[label].length)
+			th.innerHTML = `${label}${active ? ' <span class="filter-badge">filtrado</span>' : ''}`
+		})
+	}
+
 	function show(rows){
 		const tbody = document.querySelector('#tbl tbody');
 		tbody.innerHTML = ''
@@ -128,7 +139,7 @@
 		const data = await r.json()
 		show(data.data || [])
 		totalCount = Number(data.total||0)
-		renderPager()
+		renderPager(); renderHeaderFilters()
 	}
 	function renderPager(){
 		const el = document.getElementById('pager')
@@ -232,11 +243,11 @@
 	function applyFilterModal(){
 		const arr = Array.from(filterSelectedSet)
 		if(arr.length) columnFilters[filterCurrentLabel]=arr; else delete columnFilters[filterCurrentLabel]
-		closeFilterModal(); search(1)
+		closeFilterModal(); renderHeaderFilters(); search(1)
 	}
-	function clearFilterCurrent(){ delete columnFilters[filterCurrentLabel]; filterSelectedSet = new Set(); renderFilterOptions() }
+	function clearFilterCurrent(){ delete columnFilters[filterCurrentLabel]; filterSelectedSet = new Set(); renderFilterOptions(); renderHeaderFilters() }
 	function closeFilterModal(){ document.getElementById('filterModal').style.display='none' }
-	function clearAllFilters(){ columnFilters = {}; search(1) }
+	function clearAllFilters(){ columnFilters = {}; renderHeaderFilters(); search(1) }
 
 	async function loadChartComarca(){
 		guard()
@@ -306,7 +317,7 @@
 		document.getElementById('graphMsg').textContent=''
 	}
 
-	showTab('table'); search(1)
+	renderHeaderFilters(); showTab('table'); search(1)
 	</script>
 </body>
 </html> 
