@@ -20,6 +20,13 @@
 		.form-grid { display:grid; gap:8px; grid-template-columns: repeat(auto-fit, minmax(260px,1fr)) }
 		.label { font-weight:600 }
 		.row { display:grid; gap:6px }
+		/* abas */
+		.tabs { display:flex; gap:8px; margin: 12px 0 }
+		.tab { padding:8px 12px; border:1px solid #cbd5e1; background:#f8fafc; color:#0f172a; border-radius:6px; cursor:pointer }
+		.tab.active { background:#334155; color:#fff; border-color:#334155 }
+		/* paginação */
+		.pager { display:flex; gap:8px; align-items:center; justify-content:flex-end; margin-top:8px }
+		.pager .btn { background:#64748b; border-color:#64748b }
 	</style>
 </head>
 <body>
@@ -28,21 +35,32 @@
 		<button class="btn" onclick="search()">Pesquisar</button>
 		<a class="btn" href="/login" style="margin-left:auto" onclick="localStorage.removeItem('token')">Sair</a>
 	</div>
-	<table class="table" id="tbl"><thead><tr>
-		<th>#</th>
-		<th>Membro</th>
-		<th>Sexo</th>
-		<th>Concurso</th>
-		<th>Cargo efetivo</th>
-		<th>eMail pessoal</th>
-		<th>Ações</th>
-	</tr></thead><tbody></tbody></table>
 
-	<div class="grid">
-		<div class="card"><div class="card-body"><div style="display:flex;justify-content:space-between"><strong>Top 20 por Comarca</strong><button class="btn" onclick="loadChartComarca()">Atualizar</button></div><div id="chartComarca" style="width:100%;height:320px"></div></div></div>
-		<div class="card"><div class="card-body"><div style="display:flex;justify-content:space-between"><strong>Top 10 por Cargo efetivo</strong><button class="btn" onclick="loadChartCargo()">Atualizar</button></div><div id="chartCargo" style="width:100%;height:320px"></div></div></div>
-		<div class="card"><div class="card-body"><div style="display:flex;justify-content:space-between"><strong>Mapa por Comarca (MG)</strong><button class="btn" onclick="loadMap()">Atualizar</button></div><div id="chartMap" style="width:100%;height:420px"></div><div id="mapMsg" style="opacity:.8;font-size:12px"></div></div></div>
-		<div class="card"><div class="card-body"><div style="display:flex;justify-content:space-between"><strong>Relacionamentos (Amigos no MP)</strong><button class="btn" onclick="loadGraph()">Atualizar</button></div><div id="chartGraph" style="width:100%;height:420px"></div><div id="graphMsg" style="opacity:.8;font-size:12px"></div></div></div>
+	<div class="tabs">
+		<button id="tabTable" class="tab active" onclick="showTab('table')">Tabela</button>
+		<button id="tabCharts" class="tab" onclick="showTab('charts')">Gráficos</button>
+	</div>
+
+	<div id="panelTable" style="display:block">
+		<table class="table" id="tbl"><thead><tr>
+			<th>#</th>
+			<th>Membro</th>
+			<th>Sexo</th>
+			<th>Concurso</th>
+			<th>Cargo efetivo</th>
+			<th>eMail pessoal</th>
+			<th>Ações</th>
+		</tr></thead><tbody></tbody></table>
+		<div id="pager" class="pager"></div>
+	</div>
+
+	<div id="panelCharts" style="display:none">
+		<div class="grid">
+			<div class="card"><div class="card-body"><div style="display:flex;justify-content:space-between"><strong>Top 20 por Comarca</strong><button class="btn" onclick="loadChartComarca()">Atualizar</button></div><div id="chartComarca" style="width:100%;height:320px"></div></div></div>
+			<div class="card"><div class="card-body"><div style="display:flex;justify-content:space-between"><strong>Top 10 por Cargo efetivo</strong><button class="btn" onclick="loadChartCargo()">Atualizar</button></div><div id="chartCargo" style="width:100%;height:320px"></div></div></div>
+			<div class="card"><div class="card-body"><div style="display:flex;justify-content:space-between"><strong>Mapa por Comarca (MG)</strong><button class="btn" onclick="loadMap()">Atualizar</button></div><div id="chartMap" style="width:100%;height:420px"></div><div id="mapMsg" style="opacity:.8;font-size:12px"></div></div></div>
+			<div class="card"><div class="card-body"><div style="display:flex;justify-content:space-between"><strong>Relacionamentos (Amigos no MP)</strong><button class="btn" onclick="loadGraph()">Atualizar</button></div><div id="chartGraph" style="width:100%;height:420px"></div><div id="graphMsg" style="opacity:.8;font-size:12px"></div></div></div>
+		</div>
 	</div>
 
 	<div class="modal" id="modal">
@@ -68,6 +86,7 @@
 	const fields = [
 		'Membro','Sexo','Concurso','Cargo efetivo','Titularidade','eMail pessoal','Cargo Especial','Telefone Unidade','Telefone celular','Unidade Lotação','Comarca Lotação','Time de futebol e outros grupos extraprofissionais','Quantidade de filhos','Nome dos filhos','Estado de origem','Acadêmico','Pretensão de movimentação na carreira','Carreira anterior','Liderança','Grupos identitários'
 	]
+	let perPage = 30, currentPage = 1, totalCount = 0, chartsLoaded = false
 
 	function show(rows){
 		const tbody = document.querySelector('#tbl tbody');
@@ -79,13 +98,29 @@
 		}
 	}
 	async function search(page=1){
-		guard()
+		guard(); currentPage = page
 		const q = document.getElementById('q').value
-		const r = await fetch(`/api/membros?page=${page}&per_page=20&q=${encodeURIComponent(q)}`, { headers: { 'Content-Type':'application/json', ...auth() } })
+		const r = await fetch(`/api/membros?page=${page}&per_page=${perPage}&q=${encodeURIComponent(q)}`, { headers: { 'Content-Type':'application/json', ...auth() } })
 		if(r.status===401||r.status===422){ localStorage.removeItem('token'); location.href='/login'; return }
 		const data = await r.json()
 		show(data.data || [])
+		totalCount = Number(data.total||0)
+		renderPager()
 	}
+	function renderPager(){
+		const el = document.getElementById('pager')
+		const totalPages = Math.max(1, Math.ceil(totalCount / perPage))
+		const canPrev = currentPage > 1
+		const canNext = currentPage < totalPages
+		el.innerHTML = `
+			<div style='margin-right:auto'>Total: ${totalCount} registros</div>
+			<button class='btn' ${canPrev?'':'disabled'} onclick='gotoPage(${currentPage-1})'>Anterior</button>
+			<span>Página ${currentPage} de ${totalPages}</span>
+			<button class='btn' ${canNext?'':'disabled'} onclick='gotoPage(${currentPage+1})'>Próxima</button>
+		`
+	}
+	function gotoPage(p){ if(p<1) return; search(p) }
+
 	async function openModal(id){
 		guard(); currentId = id; currentData = null
 		document.getElementById('modalTitle').textContent = `Detalhes #${id}`
@@ -123,9 +158,21 @@
 		for(const el of inputs){ payload[el.getAttribute('data-key')] = el.value }
 		const r = await fetch(`/api/membros/${currentId}`, { method:'PUT', headers: { 'Content-Type':'application/json', ...auth() }, body: JSON.stringify({ data: payload }) })
 		if(!r.ok){ alert('Falha ao salvar'); return }
-		alert('Salvo com sucesso'); closeModal(); search()
+		alert('Salvo com sucesso'); closeModal(); search(currentPage)
 	}
 	function closeModal(){ document.getElementById('modal').style.display='none' }
+
+	function showTab(which){
+		const tBtn = document.getElementById('tabTable'), cBtn = document.getElementById('tabCharts')
+		const tPanel = document.getElementById('panelTable'), cPanel = document.getElementById('panelCharts')
+		if(which==='charts'){
+			tBtn.classList.remove('active'); cBtn.classList.add('active'); tPanel.style.display='none'; cPanel.style.display='block';
+			loadChartsIfNeeded()
+		}else{
+			tBtn.classList.add('active'); cBtn.classList.remove('active'); tPanel.style.display='block'; cPanel.style.display='none';
+		}
+	}
+	function loadChartsIfNeeded(){ if(chartsLoaded) return; loadChartComarca(); loadChartCargo(); loadMap(); loadGraph(); chartsLoaded=true }
 
 	async function loadChartComarca(){
 		guard()
@@ -195,7 +242,7 @@
 		document.getElementById('graphMsg').textContent=''
 	}
 
-	search(); loadChartComarca(); loadChartCargo(); loadMap(); loadGraph()
+	showTab('table'); search(1)
 	</script>
 </body>
 </html> 
