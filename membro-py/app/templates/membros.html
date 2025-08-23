@@ -31,6 +31,15 @@
 		.pager .btn { background:#64748b; border-color:#64748b }
 		/* indicador de filtro ativo */
 		.filter-badge { margin-left:6px; background:#334155; color:#fff; border-radius:999px; font-size:11px; padding:2px 6px; }
+		/* perfil */
+		.profile { margin-left:auto; position:relative }
+		.profile-btn { display:flex; align-items:center; gap:8px; padding:6px 10px; border:1px solid #cbd5e1; background:#fff; color:#0f172a; border-radius:999px; cursor:pointer }
+		.avatar { width:28px; height:28px; border-radius:999px; background:#334155; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:600 }
+		.dropdown { position:absolute; right:0; top:40px; background:#fff; border:1px solid #cbd5e1; border-radius:8px; min-width:260px; box-shadow:0 8px 24px rgba(0,0,0,.08); display:none; z-index:50 }
+		.dropdown .item { padding:10px 12px; border-bottom:1px solid #e2e8f0 }
+		.dropdown .item:last-child { border-bottom:none }
+		.dropdown .name { font-weight:600; color:#0f172a }
+		.dropdown .email { font-size:12px; color:#475569; word-break:break-all }
 	</style>
 </head>
 <body>
@@ -39,7 +48,19 @@
 		<datalist id="suggestions"></datalist>
 		<button class="btn" onclick="search()">Pesquisar</button>
 		<button class="btn" onclick="clearAllFilters()" title="Limpar filtros">Limpar filtros</button>
-		<a class="btn" href="/login" style="margin-left:auto" onclick="localStorage.removeItem('token')">Sair</a>
+		<div class="profile" id="profile">
+			<button class="profile-btn" onclick="toggleProfile()">
+				<div class="avatar" id="avatar">?</div>
+				<span id="profileName" style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">Usuário</span>
+			</button>
+			<div class="dropdown" id="profileMenu">
+				<div class="item">
+					<div class="name" id="menuName">Usuário</div>
+					<div class="email" id="menuEmail">email@example.com</div>
+				</div>
+				<div class="item"><button class="btn" style="width:100%" onclick="doLogout()">Sair</button></div>
+			</div>
+		</div>
 	</div>
 
 	<div class="tabs">
@@ -104,7 +125,7 @@
 	function decodeJwtPayload(){ try{ const t=token(); if(!t) return {}; const p=t.split('.')[1]; const pad=(s)=>s.padEnd(s.length+((4-(s.length%4))%4),'='); return JSON.parse(atob(p.replace(/-/g,'+').replace(/_/g,'/')));}catch{return{}} }
 	function isAdmin(){ const p=decodeJwtPayload(); const role=(p.role||((p.sub||{}).role)||'').toLowerCase(); return role==='admin' }
 
-	let currentId = null; let currentData = null;
+	let currentId = null; let currentData = null; let currentUser = null;
 	const fields = [
 		'Membro','Sexo','Concurso','Cargo efetivo','Titularidade','eMail pessoal','Cargo Especial','Telefone Unidade','Telefone celular','Unidade Lotação','Comarca Lotação','Time de futebol e outros grupos extraprofissionais','Quantidade de filhos','Nome dos filhos','Estado de origem','Acadêmico','Pretensão de movimentação na carreira','Carreira anterior','Liderança','Grupos identitários'
 	]
@@ -122,6 +143,12 @@
 			th.innerHTML = `${label}${active ? ' <span class="filter-badge">filtrado</span>' : ''}`
 		})
 	}
+
+	function toggleProfile(){ const m=document.getElementById('profileMenu'); m.style.display = (m.style.display==='block'?'none':'block') }
+	document.addEventListener('click', (e)=>{ const p=document.getElementById('profile'); if(!p.contains(e.target)) document.getElementById('profileMenu').style.display='none' })
+	function renderProfile(){ const n=(currentUser?.name||'').trim(); const em=(currentUser?.email||'').trim(); const ini=(n?n[0]: (em?em[0]:'?')).toUpperCase(); document.getElementById('avatar').textContent=ini; document.getElementById('profileName').textContent=n||em||'Usuário'; document.getElementById('menuName').textContent=n||'Usuário'; document.getElementById('menuEmail').textContent=em||'' }
+	async function loadMe(){ try{ const r=await fetch('/api/auth/me', { headers:{ ...auth() } }); const d=await r.json(); currentUser = d?.user||null; renderProfile() }catch{} }
+	function doLogout(){ localStorage.removeItem('token'); location.href='/login' }
 
 	function show(rows){
 		const tbody = document.querySelector('#tbl tbody');
@@ -325,7 +352,7 @@
 		document.getElementById('graphMsg').textContent=''
 	}
 
-	renderHeaderFilters(); showTab('table'); search(1)
+	renderHeaderFilters(); showTab('table'); loadMe(); search(1)
 	</script>
 </body>
 </html> 
