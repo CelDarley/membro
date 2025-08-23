@@ -40,15 +40,20 @@
 		.dropdown .item:last-child { border-bottom:none }
 		.dropdown .name { font-weight:600; color:#0f172a }
 		.dropdown .email { font-size:12px; color:#475569; word-break:break-all }
+		/* toasts */
+		#toasts { position: fixed; right: 16px; top: 16px; display: grid; gap: 8px; z-index: 9999 }
+		.toast { padding: 10px 12px; border-radius: 8px; color: #0f172a; background: #e2e8f0; border: 1px solid #cbd5e1; box-shadow: 0 4px 16px rgba(0,0,0,.08) }
+		.toast.success { background:#ecfdf5; border-color:#10b981; color:#065f46 }
+		.toast.error { background:#fef2f2; border-color:#ef4444; color:#7f1d1d }
 	</style>
 </head>
 <body>
+	<div id="toasts"></div>
 	<div class="toolbar">
 		<input id="q" class="input" placeholder="Buscar..." list="suggestions" oninput="onMainInput()" />
 		<datalist id="suggestions"></datalist>
 		<button class="btn" onclick="search()">Pesquisar</button>
 		<button class="btn" onclick="clearAllFilters()" title="Limpar filtros">Limpar filtros</button>
-		<a id="btnCad" class="btn" href="/cadastros" style="display:none">Cadastros</a>
 		<div class="profile" id="profile">
 			<button class="profile-btn" onclick="toggleProfile()">
 				<div class="avatar" id="avatar">?</div>
@@ -67,6 +72,7 @@
 	<div class="tabs">
 		<button id="tabTable" class="tab active" onclick="showTab('table')">Tabela</button>
 		<button id="tabCharts" class="tab" onclick="showTab('charts')">Gráficos</button>
+		<button id="tabLookups" class="tab" style="display:none" onclick="showTab('lookups')">Cadastros</button>
 	</div>
 
 	<div id="panelTable" style="display:block">
@@ -88,6 +94,28 @@
 			<div class="card"><div class="card-body"><div style="display:flex;justify-content:space-between"><strong>Mapa por Comarca (MG)</strong><button class="btn" onclick="loadMap()">Atualizar</button></div><div id="chartMap" style="width:100%;height:420px"></div><div id="mapMsg" style="opacity:.8;font-size:12px"></div></div></div>
 			<div class="card"><div class="card-body"><div style="display:flex;justify-content:space-between"><strong>Relacionamentos (Amigos no MP)</strong><button class="btn" onclick="loadGraph()">Atualizar</button></div><div id="chartGraph" style="width:100%;height:420px"></div><div id="graphMsg" style="opacity:.8;font-size:12px"></div></div></div>
 		</div>
+	</div>
+
+	<div id="panelLookups" style="display:none">
+		<div class="toolbar" style="margin-top:0">
+			<select id="lkType" onchange="lkLoadList()" style="max-width:320px">
+				<option value="concurso">Concurso</option>
+				<option value="cargo_efetivo">Cargo efetivo</option>
+				<option value="titularidade">Titularidade</option>
+				<option value="cargo_especial">Cargo especial</option>
+				<option value="unidade_lotacao">Unidade de lotação</option>
+				<option value="comarca_lotacao">Comarca de lotação</option>
+				<option value="time_extraprofissionais">Time de futebol e outros grupos extraprofissionais</option>
+				<option value="estado_origem">Estado de origem</option>
+				<option value="grupos_identitarios">Grupos identitários</option>
+			</select>
+			<input id="lkQ" class="input" placeholder="Buscar..." oninput="lkLoadList()" />
+		</div>
+		<div class="row">
+			<input id="lkNew" class="input" placeholder="Novo valor" />
+			<button class="btn" onclick="lkCreate()">Adicionar</button>
+		</div>
+		<table class="table"><thead><tr><th>Valor</th><th style="width:140px">Ações</th></tr></thead><tbody id="lkBody"></tbody></table>
 	</div>
 
 	<div class="modal" id="modal">
@@ -126,7 +154,9 @@
 	function decodeJwtPayload(){ try{ const t=token(); if(!t) return {}; const p=t.split('.')[1]; const pad=(s)=>s.padEnd(s.length+((4-(s.length%4))%4),'='); return JSON.parse(atob(p.replace(/-/g,'+').replace(/_/g,'/')));}catch{return{}} }
 	function isAdmin(){ const p=decodeJwtPayload(); const role=(p.role||((p.sub||{}).role)||'').toLowerCase(); return role==='admin' }
 
-	let currentId = null; let currentData = null; let currentUser = null;
+	function toast(msg, type){ const box=document.getElementById('toasts'); const el=document.createElement('div'); el.className='toast'+(type?(' '+type):''); el.textContent=msg; box.appendChild(el); setTimeout(()=>{ el.remove() }, 3500) }
+
+	let currentId = null; let currentData = null; let currentUser = null; let lookupsInited = false;
 	const fields = [
 		'Membro','Sexo','Concurso','Cargo efetivo','Titularidade','eMail pessoal','Cargo Especial','Telefone Unidade','Telefone celular','Unidade Lotação','Comarca Lotação','Time de futebol e outros grupos extraprofissionais','Quantidade de filhos','Nome dos filhos','Estado de origem','Acadêmico','Pretensão de movimentação na carreira','Carreira anterior','Liderança','Grupos identitários'
 	]
@@ -141,13 +171,13 @@
 		ths.forEach(th=>{
 			const label = th.getAttribute('data-label')
 			const active = !!(columnFilters[label] && columnFilters[label].length)
-			th.innerHTML = `${label}${active ? ' <span class="filter-badge">filtrado</span>' : ''}`
+			th.innerHTML = `${label}${active ? ' <span class=\"filter-badge\">filtrado</span>' : ''}`
 		})
 	}
 
 	function toggleProfile(){ const m=document.getElementById('profileMenu'); m.style.display = (m.style.display==='block'?'none':'block') }
 	document.addEventListener('click', (e)=>{ const p=document.getElementById('profile'); if(!p.contains(e.target)) document.getElementById('profileMenu').style.display='none' })
-	function renderProfile(){ const n=(currentUser?.name||'').trim(); const em=(currentUser?.email||'').trim(); const ini=(n?n[0]: (em?em[0]:'?')).toUpperCase(); document.getElementById('avatar').textContent=ini; document.getElementById('profileName').textContent=n||em||'Usuário'; document.getElementById('menuName').textContent=n||'Usuário'; document.getElementById('menuEmail').textContent=em||''; const btnCad=document.getElementById('btnCad'); btnCad.style.display = (decodeJwtPayload()?.role||'').toLowerCase()==='admin' ? 'inline-block' : 'none' }
+	function renderProfile(){ const n=(currentUser?.name||'').trim(); const em=(currentUser?.email||'').trim(); const ini=(n?n[0]: (em?em[0]:'?')).toUpperCase(); document.getElementById('avatar').textContent=ini; document.getElementById('profileName').textContent=n||em||'Usuário'; document.getElementById('menuName').textContent=n||'Usuário'; document.getElementById('menuEmail').textContent=em||''; const tabL=document.getElementById('tabLookups'); tabL.style.display = isAdmin() ? 'inline-block' : 'none' }
 	async function loadMe(){ try{ const r=await fetch('/api/auth/me', { headers:{ ...auth() } }); const d=await r.json(); currentUser = d?.user||null; renderProfile() }catch{} }
 	function doLogout(){ localStorage.removeItem('token'); location.href='/login' }
 
@@ -210,7 +240,7 @@
 					const ufs=['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
 					html += `<select class='input' data-key='${k}'><option value=''></option>${ufs.map(uf=>`<option ${v===uf?'selected':''}>${uf}</option>`).join('')}</select>`
 				} else if(k==='Quantidade de filhos') html += `<input class='input' data-key='${k}' type='number' min='0' value='${v||''}' />`
-				else html += `<input class='input' data-key='${k}' value='${String(v).replace(/"/g,'&quot;')}' />`
+				else html += `<input class='input' data-key='${k}' value='${String(v).replace(/\"/g,'&quot;')}' />`
 			} else {
 				html += `<div>${v||'-'}</div>`
 			}
@@ -224,19 +254,22 @@
 		const payload = { }
 		for(const el of inputs){ payload[el.getAttribute('data-key')] = el.value }
 		const r = await fetch(`/api/membros/${currentId}`, { method:'PUT', headers: { 'Content-Type':'application/json', ...auth() }, body: JSON.stringify({ data: payload }) })
-		if(!r.ok){ alert('Falha ao salvar'); return }
-		alert('Salvo com sucesso'); closeModal(); search(currentPage)
+		if(!r.ok){ toast('Falha ao salvar', 'error'); return }
+		toast('Salvo com sucesso', 'success'); closeModal(); search(currentPage)
 	}
 	function closeModal(){ document.getElementById('modal').style.display='none' }
 
 	function showTab(which){
-		const tBtn = document.getElementById('tabTable'), cBtn = document.getElementById('tabCharts')
-		const tPanel = document.getElementById('panelTable'), cPanel = document.getElementById('panelCharts')
+		const tBtn = document.getElementById('tabTable'), cBtn = document.getElementById('tabCharts'), lBtn=document.getElementById('tabLookups')
+		const tPanel = document.getElementById('panelTable'), cPanel = document.getElementById('panelCharts'), lPanel=document.getElementById('panelLookups')
 		if(which==='charts'){
-			tBtn.classList.remove('active'); cBtn.classList.add('active'); tPanel.style.display='none'; cPanel.style.display='block';
+			tBtn.classList.remove('active'); cBtn.classList.add('active'); lBtn.classList.remove('active'); tPanel.style.display='none'; cPanel.style.display='block'; lPanel.style.display='none';
 			loadChartsIfNeeded()
+		}else if(which==='lookups'){
+			tBtn.classList.remove('active'); cBtn.classList.remove('active'); lBtn.classList.add('active'); tPanel.style.display='none'; cPanel.style.display='none'; lPanel.style.display='block';
+			if(!lookupsInited){ lkInit(); lookupsInited=true }
 		}else{
-			tBtn.classList.add('active'); cBtn.classList.remove('active'); tPanel.style.display='block'; cPanel.style.display='none';
+			tBtn.classList.add('active'); cBtn.classList.remove('active'); lBtn.classList.remove('active'); tPanel.style.display='block'; cPanel.style.display='none'; lPanel.style.display='none';
 		}
 	}
 	function loadChartsIfNeeded(){ if(chartsLoaded) return; loadChartComarca(); loadChartCargo(); loadMap(); loadGraph(); chartsLoaded=true }
@@ -250,7 +283,7 @@
 		const q = document.getElementById('q').value.trim(); if(!q) { document.getElementById('suggestions').innerHTML=''; return }
 		const r = await fetch(`/api/membros/suggest?q=${encodeURIComponent(q)}`, { headers: { ...auth() } })
 		if(!r.ok) return; const data = await r.json(); const list = document.getElementById('suggestions');
-		list.innerHTML = (data.values||[]).map(v=>`<option value="${String(v).replace(/"/g,'&quot;')}"></option>`).join('')
+		list.innerHTML = (data.values||[]).map(v=>`<option value=\"${String(v).replace(/\"/g,'&quot;')}\"></option>`).join('')
 	}
 
 	// Filtro por coluna (modal) com aplicação em tempo real
@@ -270,7 +303,7 @@
 		for(const v of vals){
 			const id = `opt_${filterCurrentLabel}_${btoa(unescape(encodeURIComponent(String(v))))}`
 			const div = document.createElement('div')
-			div.innerHTML = `<label style='display:flex; gap:8px; align-items:center'><input type='checkbox' id='${id}' ${filterSelectedSet.has(String(v))?'checked':''} onchange='toggleFilterValue("${String(v).replace(/"/g,'&quot;')}")' /> <span>${String(v)||'(vazio)'}</span></label>`
+			div.innerHTML = `<label style='display:flex; gap:8px; align-items:center'><input type='checkbox' id='${id}' ${filterSelectedSet.has(String(v))?'checked':''} onchange='toggleFilterValue(\"${String(v).replace(/\"/g,'&quot;')}\")' /> <span>${String(v)||'(vazio)'}</span></label>`
 			box.appendChild(div)
 		}
 	}
@@ -352,6 +385,14 @@
 		chart.setOption({ tooltip:{ formatter:(p)=>p.data?.name||'' }, series:[{ type:'graph', layout:'force', roam:true, label:{ show:true, position:'right', formatter:'{b}', fontSize:10 }, data:nodes, links, force:{ repulsion:120, edgeLength:[30,120] }, lineStyle:{ color:'#94a3b8' }, itemStyle:{ color:'#2563eb' } }] })
 		document.getElementById('graphMsg').textContent=''
 	}
+
+	// Lookups CRUD (aba Cadastros)
+	async function lkPopulate(){ try{ await fetch('/api/lookups/populate-from-membros', { method:'POST', headers:{ ...auth() } }) }catch(e){} }
+	async function lkLoadList(page=1){ const type=document.getElementById('lkType').value; const q=document.getElementById('lkQ').value.trim(); const r=await fetch(`/api/lookups?type=${encodeURIComponent(type)}&q=${encodeURIComponent(q)}&page=${page}&per_page=200`, { headers:{ ...auth() } }); const d=await r.json(); const tb=document.getElementById('lkBody'); tb.innerHTML=''; for(const it of (d.data||[])){ const tr=document.createElement('tr'); tr.innerHTML=`<td><input class='input' value=\"${String(it.value).replace(/\"/g,'&quot;')}\" data-id='${it.id}' style='width:100%'/></td><td><button class='btn' onclick='lkSave(${it.id})'>Salvar</button> <button class='btn' onclick='lkDelete(${it.id})'>Excluir</button></td>`; tb.appendChild(tr) } }
+	async function lkCreate(){ const type=document.getElementById('lkType').value; const value=document.getElementById('lkNew').value.trim(); if(!value){ toast('Informe um valor', 'error'); return } const r=await fetch('/api/lookups', { method:'POST', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify({ type, value }) }); if(r.ok){ document.getElementById('lkNew').value=''; toast('Adicionado', 'success'); lkLoadList() } else { toast('Falha ao adicionar', 'error') } }
+	async function lkSave(id){ const inp = document.querySelector(`[data-id="${id}"]`); const value=inp.value.trim(); const r=await fetch(`/api/lookups/${id}`, { method:'PUT', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify({ value }) }); if(r.ok){ toast('Salvo', 'success'); lkLoadList() } else { toast('Falha ao salvar', 'error') } }
+	async function lkDelete(id){ if(!confirm('Excluir este valor?')) return; const r=await fetch(`/api/lookups/${id}`, { method:'DELETE', headers:{ ...auth() } }); if(r.ok){ toast('Excluído', 'success'); lkLoadList() } else { toast('Falha ao excluir', 'error') } }
+	async function lkInit(){ await lkPopulate(); lkLoadList() }
 
 	renderHeaderFilters(); showTab('table'); loadMe(); search(1)
 	</script>
