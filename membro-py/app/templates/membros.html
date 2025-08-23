@@ -45,6 +45,12 @@
 		.toast { padding: 10px 12px; border-radius: 8px; color: #0f172a; background: #e2e8f0; border: 1px solid #cbd5e1; box-shadow: 0 4px 16px rgba(0,0,0,.08) }
 		.toast.success { background:#ecfdf5; border-color:#10b981; color:#065f46 }
 		.toast.error { background:#fef2f2; border-color:#ef4444; color:#7f1d1d }
+		.chips { display:flex; flex-wrap:wrap; gap:6px }
+		.chip { display:flex; align-items:center; gap:6px; padding:4px 8px; background:#e2e8f0; border:1px solid #cbd5e1; border-radius:999px }
+		.chip button { border:none; background:transparent; cursor:pointer; color:#7f1d1d; font-weight:600 }
+		.suggest { border:1px solid #cbd5e1; background:#fff; max-height:200px; overflow:auto; border-radius:6px; margin-top:6px }
+		.suggest div { padding:6px 8px; cursor:pointer }
+		.suggest div:hover { background:#f1f5f9 }
 	</style>
 </head>
 <body>
@@ -228,6 +234,33 @@
 		}catch(e){ document.getElementById('modalBody').textContent = 'Erro ao carregar detalhes'; return }
 		renderModal()
 	}
+	let amigoIds = new Set(); let amigoNames = []
+	async function loadAmigosInitial(){
+		const ids = currentData['Amigos no MP (IDs)']||[]; const nomes = currentData['Amigos no MP (Nomes)']||[]
+		amigoIds = new Set(Array.isArray(ids)? ids.map(n=>Number(n)).filter(n=>Number.isFinite(n)) : [])
+		amigoNames = Array.isArray(nomes)? nomes : []
+	}
+	function renderAmigosUI(container){
+		container.innerHTML = ''
+		const chips = document.createElement('div'); chips.className='chips'
+		let i=0; for(const name of amigoNames){ const id = Array.from(amigoIds)[i++]||null; const chip=document.createElement('span'); chip.className='chip'; chip.innerHTML=`<span>${name}</span><button title='Remover' onclick='removeAmigo(${id})'>×</button>`; chips.appendChild(chip) }
+		container.appendChild(chips)
+		const box = document.createElement('div'); box.innerHTML = `<input id='amigoSearch' class='input' placeholder='Buscar membro para adicionar...' oninput='debouncedAmigoSuggest()' /> <div id='amigoSuggest' class='suggest' style='display:none'></div>`
+		container.appendChild(box)
+	}
+	let amigoTimer=null
+	function debouncedAmigoSuggest(){ clearTimeout(amigoTimer); amigoTimer=setTimeout(amigoSuggest, 200) }
+	async function amigoSuggest(){
+		const el=document.getElementById('amigoSearch'); if(!el) return; const q=el.value.trim(); const box=document.getElementById('amigoSuggest');
+		if(!q){ box.style.display='none'; box.innerHTML=''; return }
+		const r=await fetch(`/api/membros/search-min?q=${encodeURIComponent(q)}`, { headers:{ ...auth() } }); if(!r.ok){ box.style.display='none'; return }
+		const d=await r.json(); const items=d.data||[]; if(!items.length){ box.style.display='none'; box.innerHTML=''; return }
+		box.innerHTML = items.map(it=>`<div onclick='addAmigo(${it.id}, ${JSON.stringify(it.nome).replace(/"/g,'&quot;')})'>${it.nome}</div>`).join('')
+		box.style.display='block'
+	}
+	function addAmigo(id, nome){ id=Number(id); if(!Number.isFinite(id) || amigoIds.has(id)) return; amigoIds.add(id); amigoNames.push(String(nome||('#'+id))); const cont=document.getElementById('amigosBox'); renderAmigosUI(cont); document.getElementById('amigoSuggest').style.display='none'; document.getElementById('amigoSuggest').innerHTML=''; document.getElementById('amigoSearch').value=''; }
+	function removeAmigo(id){ const arrIds=Array.from(amigoIds); const idx=arrIds.indexOf(Number(id)); if(idx>=0){ arrIds.splice(idx,1); amigoIds=new Set(arrIds); amigoNames.splice(idx,1); const cont=document.getElementById('amigosBox'); renderAmigosUI(cont) } }
+
 	function renderModal(){
 		const admin = isAdmin();
 		let html = `<div class='form-grid'>`
@@ -246,13 +279,20 @@
 			}
 			html += `</div>`
 		}
+		// Se admin, bloco para amigos no MP
+		if(admin){
+			html += `<div class='row'><label class='label'>Amigos no MP</label><div id='amigosBox'></div></div>`
+		}
 		html += `</div>`
 		document.getElementById('modalBody').innerHTML = html
+		if(admin){ loadAmigosInitial(); renderAmigosUI(document.getElementById('amigosBox')) }
 	}
 	async function saveModal(){
 		const inputs = document.querySelectorAll('#modalBody [data-key]')
 		const payload = { }
 		for(const el of inputs){ payload[el.getAttribute('data-key')] = el.value }
+		// incluir amigos IDs
+		payload['Amigos no MP (IDs)'] = Array.from(amigoIds)
 		const r = await fetch(`/api/membros/${currentId}`, { method:'PUT', headers: { 'Content-Type':'application/json', ...auth() }, body: JSON.stringify({ data: payload }) })
 		if(!r.ok){ toast('Falha ao salvar', 'error'); return }
 		toast('Salvo com sucesso', 'success'); closeModal(); search(currentPage)

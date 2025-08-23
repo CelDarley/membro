@@ -65,6 +65,7 @@ def apply_filters(query):
 
 
 def to_row(m: Membro):
+	amigos = list(m.amigos)  # pode consultar
 	return {
 		'id': m.id,
 		'data': {
@@ -88,7 +89,8 @@ def to_row(m: Membro):
 			'Carreira anterior': m.carreira_anterior,
 			'Liderança': m.lideranca,
 			'Grupos identitários': m.grupos_identitarios,
-			'Amigos no MP (IDs)': [a.id for a in m.amigos],
+			'Amigos no MP (IDs)': [a.id for a in amigos],
+			'Amigos no MP (Nomes)': [a.nome for a in amigos],
 		}
 	}
 
@@ -149,6 +151,18 @@ def suggest_membros():
 	return {'values': vals}
 
 
+@bp.get('/membros/search-min')
+@jwt_required()
+def search_min_membros():
+	q = (request.args.get('q') or '').strip()
+	query = Membro.query
+	if q:
+		like = f"%{q}%"
+		query = query.filter(Membro.nome.ilike(like))
+	rows = query.order_by(Membro.nome.asc()).limit(20).all()
+	return {'data': [{'id': m.id, 'nome': m.nome} for m in rows]}
+
+
 @bp.get('/membros/stats')
 @jwt_required()
 def stats_membros():
@@ -191,6 +205,21 @@ def create_membro():
 	)
 	db.session.add(m)
 	db.session.commit()
+	# sincronizar amigos se enviados
+	raw = data.get('Amigos no MP (IDs)')
+	if raw is not None:
+		ids = []
+		if isinstance(raw, list):
+			ids = [int(x) for x in raw if str(x).isdigit()]
+		elif isinstance(raw, str):
+			ids = [int(x) for x in raw.split(',') if x.strip().isdigit()]
+		ids = [fid for fid in ids if fid != m.id]
+		if ids:
+			friends = Membro.query.filter(Membro.id.in_(ids)).all()
+			for f in friends:
+				if f.id != m.id:
+					m.amigos.append(f)
+			db.session.commit()
 	return {'success': True, 'id': m.id}
 
 
@@ -223,5 +252,26 @@ def update_membro(id: int):
 	m.carreira_anterior = data.get('Carreira anterior') or m.carreira_anterior
 	m.lideranca = data.get('Liderança') or m.lideranca
 	m.grupos_identitarios = data.get('Grupos identitários') or m.grupos_identitarios
+	# sincronizar amigos
+	raw = data.get('Amigos no MP (IDs)')
+	if raw is not None:
+		new_ids = []
+		if isinstance(raw, list):
+			new_ids = [int(x) for x in raw if str(x).isdigit()]
+		elif isinstance(raw, str):
+			new_ids = [int(x) for x in raw.split(',') if x.strip().isdigit()]
+		new_ids = [fid for fid in new_ids if fid != m.id]
+		current_ids = set(a.id for a in m.amigos)
+		to_add = set(new_ids) - current_ids
+		to_remove = current_ids - set(new_ids)
+		if to_remove:
+			for f in list(m.amigos):
+				if f.id in to_remove:
+					m.amigos.remove(f)
+		if to_add:
+			friends = Membro.query.filter(Membro.id.in_(list(to_add))).all()
+			for f in friends:
+				if f.id != m.id:
+					m.amigos.append(f)
 	db.session.commit()
 	return {'success': True} 
