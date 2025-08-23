@@ -11,9 +11,13 @@
 		.input { padding: 8px; border:1px solid #cbd5e1; border-radius:6px; width: 100% }
 		.input, select { box-sizing: border-box }
 		.btn { padding: 8px 12px; border: 1px solid #334155; background: #334155; color: #fff; border-radius: 6px; cursor:pointer }
-		.table { border-collapse: collapse; width:100% }
-		.table th, .table td { border:1px solid #e2e8f0; padding:8px; font-size: 14px }
-		.table th { background:#f1f5f9; cursor:pointer; user-select:none }
+		.table-wrap { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 6px }
+		table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; table-layout: fixed }
+		.table th, .table td { border:1px solid #e2e8f0; padding:8px; font-size: 14px; min-width: 160px; background: #fff }
+		.table th { background:#f1f5f9; cursor:pointer; user-select:none; position: sticky; top: 0; z-index: 5 }
+		.freeze-left { position: sticky; left: 0; z-index: 6; box-shadow: 2px 0 0 #e2e8f0; background: #fff }
+		.freeze-right { position: sticky; right: 0; z-index: 6; box-shadow: -2px 0 0 #e2e8f0; background: #fff }
+		/* modal, grids, abas, toasts, chips, suggest ... */
 		.modal { position: fixed; inset:0; background: rgba(0,0,0,.5); display:none; align-items:center; justify-content:center }
 		.modal-inner { background: #fff; border-radius:8px; padding: 20px; width: 95%; max-width: 1300px; max-height: 90vh; overflow: auto; overflow-x: hidden }
 		.grid { display:grid; gap:12px; grid-template-columns: repeat(auto-fit, minmax(320px,1fr)); align-items: stretch }
@@ -51,6 +55,8 @@
 		.suggest { border:1px solid #cbd5e1; background:#fff; max-height:200px; overflow:auto; border-radius:6px; margin-top:6px }
 		.suggest div { padding:6px 8px; cursor:pointer }
 		.suggest div:hover { background:#f1f5f9 }
+		/* garantir modais de filtro no topo */
+		#filterModal { z-index: 10001 }
 	</style>
 </head>
 <body>
@@ -82,14 +88,30 @@
 	</div>
 
 	<div id="panelTable" style="display:block">
-		<table class="table" id="tbl"><thead><tr>
-			<th data-label="Membro" onclick="openFilterModal('Membro')">Membro</th>
-			<th data-label="Sexo" onclick="openFilterModal('Sexo')">Sexo</th>
-			<th data-label="Concurso" onclick="openFilterModal('Concurso')">Concurso</th>
-			<th data-label="Cargo efetivo" onclick="openFilterModal('Cargo efetivo')">Cargo efetivo</th>
-			<th data-label="eMail pessoal" onclick="openFilterModal('eMail pessoal')">eMail pessoal</th>
-			<th>Ações</th>
-		</tr></thead><tbody></tbody></table>
+		<div class="table-wrap">
+			<table class="table" id="tbl"><thead><tr>
+				<th class="freeze-left" data-label="Membro" onclick="openFilterModal('Membro')">Membro</th>
+				<th data-label="Sexo" onclick="openFilterModal('Sexo')">Sexo</th>
+				<th data-label="Concurso" onclick="openFilterModal('Concurso')">Concurso</th>
+				<th data-label="Cargo efetivo" onclick="openFilterModal('Cargo efetivo')">Cargo efetivo</th>
+				<th data-label="Titularidade" onclick="openFilterModal('Titularidade')">Titularidade</th>
+				<th data-label="eMail pessoal" onclick="openFilterModal('eMail pessoal')">eMail pessoal</th>
+				<th data-label="Telefone Unidade" onclick="openFilterModal('Telefone Unidade')">Telefone Unidade</th>
+				<th data-label="Telefone celular" onclick="openFilterModal('Telefone celular')">Telefone celular</th>
+				<th data-label="Unidade Lotação" onclick="openFilterModal('Unidade Lotação')">Unidade Lotação</th>
+				<th data-label="Comarca Lotação" onclick="openFilterModal('Comarca Lotação')">Comarca Lotação</th>
+				<th data-label="Time de futebol e outros grupos extraprofissionais" onclick="openFilterModal('Time de futebol e outros grupos extraprofissionais')">Time/Grupos extraprofissionais</th>
+				<th data-label="Quantidade de filhos" onclick="openFilterModal('Quantidade de filhos')">Qtd. filhos</th>
+				<th data-label="Nome dos filhos" onclick="openFilterModal('Nome dos filhos')">Nome dos filhos</th>
+				<th data-label="Estado de origem" onclick="openFilterModal('Estado de origem')">Estado de origem</th>
+				<th data-label="Acadêmico" onclick="openFilterModal('Acadêmico')">Acadêmico</th>
+				<th data-label="Pretensão de movimentação na carreira" onclick="openFilterModal('Pretensão de movimentação na carreira')">Pretensão de movimentação</th>
+				<th data-label="Carreira anterior" onclick="openFilterModal('Carreira anterior')">Carreira anterior</th>
+				<th data-label="Liderança" onclick="openFilterModal('Liderança')">Liderança</th>
+				<th data-label="Grupos identitários" onclick="openFilterModal('Grupos identitários')">Grupos identitários</th>
+				<th class="freeze-right">Ações</th>
+			</tr></thead><tbody></tbody></table>
+		</div>
 		<div id="pager" class="pager"></div>
 	</div>
 
@@ -192,7 +214,28 @@
 		tbody.innerHTML = ''
 		for(const r of rows){
 			const tr = document.createElement('tr')
-			tr.innerHTML = `<td>${r.data['Membro']||''}</td><td>${r.data['Sexo']||''}</td><td>${r.data['Concurso']||''}</td><td>${r.data['Cargo efetivo']||''}</td><td>${r.data['eMail pessoal']||''}</td><td><button class='btn' onclick='openModal(${r.id})'>Ver</button></td>`
+			tr.innerHTML = `
+				<td class='freeze-left'>${r.data['Membro']||''}</td>
+				<td>${r.data['Sexo']||''}</td>
+				<td>${r.data['Concurso']||''}</td>
+				<td>${r.data['Cargo efetivo']||''}</td>
+				<td>${r.data['Titularidade']||''}</td>
+				<td>${r.data['eMail pessoal']||''}</td>
+				<td>${r.data['Telefone Unidade']||''}</td>
+				<td>${r.data['Telefone celular']||''}</td>
+				<td>${r.data['Unidade Lotação']||''}</td>
+				<td>${r.data['Comarca Lotação']||''}</td>
+				<td>${r.data['Time de futebol e outros grupos extraprofissionais']||''}</td>
+				<td>${r.data['Quantidade de filhos']??''}</td>
+				<td>${r.data['Nome dos filhos']||''}</td>
+				<td>${r.data['Estado de origem']||''}</td>
+				<td>${r.data['Acadêmico']||''}</td>
+				<td>${r.data['Pretensão de movimentação na carreira']||''}</td>
+				<td>${r.data['Carreira anterior']||''}</td>
+				<td>${r.data['Liderança']||''}</td>
+				<td>${r.data['Grupos identitários']||''}</td>
+				<td class='freeze-right'><button class='btn' onclick='openModal(${r.id})'>Ver</button></td>
+			`
 			tbody.appendChild(tr)
 		}
 	}
