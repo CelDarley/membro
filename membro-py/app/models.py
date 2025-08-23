@@ -20,6 +20,8 @@ class User(db.Model):
 	two_factor_enabled = db.Column(db.Boolean, default=False)
 	phone = db.Column(db.String(50))
 	active = db.Column(db.Boolean, default=True, nullable=False)
+	reset_code = db.Column(db.String(10))
+	reset_expires_at = db.Column(db.DateTime)
 
 	def set_password(self, raw: str) -> None:
 		self.password_hash = generate_password_hash(raw)
