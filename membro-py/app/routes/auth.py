@@ -3,7 +3,9 @@ from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identi
 from ..db import db
 from ..models import User
 from datetime import datetime, timedelta
-import os, random, string, logging
+import os, random, string, logging, smtplib
+from email.message import EmailMessage
+from flask import current_app
 
 bp = Blueprint('auth', __name__)
 logger = logging.getLogger(__name__)
@@ -16,6 +18,8 @@ def login():
 	user = User.query.filter_by(email=email).first()
 	if not user or not user.check_password(password):
 		return {'message': 'Credenciais inválidas'}, 401
+	if not bool(user.active):
+		return {'message': 'Usuário inativo. Contate o administrador.'}, 403
 	# identity deve ser string no Flask-JWT-Extended v4; incluir role em additional_claims
 	access = create_access_token(identity=str(user.id), additional_claims={'role': user.role})
 	return {
@@ -67,8 +71,30 @@ def forgot_password():
 		user.reset_code = code
 		user.reset_expires_at = datetime.utcnow() + timedelta(minutes=15)
 		db.session.commit()
-		logger.info('Código de reset para %s: %s (válido por 15 min)', email, code)
-		# TODO: se SMTP configurado, enviar e-mail real
+		# Envio: SMTP se configurado, senão log
+		try:
+			cfg = current_app.config
+			server = cfg.get('MAIL_SERVER')
+			username = cfg.get('MAIL_USERNAME')
+			password = cfg.get('MAIL_PASSWORD')
+			sender = cfg.get('MAIL_DEFAULT_SENDER') or username
+			port = int(cfg.get('MAIL_PORT') or 587)
+			use_tls = bool(cfg.get('MAIL_USE_TLS'))
+			if server and username and password and sender:
+				msg = EmailMessage()
+				msg['Subject'] = 'Código para redefinição de senha'
+				msg['From'] = sender
+				msg['To'] = email
+				msg.set_content(f'Seu código de redefinição é {code}. Ele expira em 15 minutos.')
+				with smtplib.SMTP(server, port, timeout=10) as smtp:
+					if use_tls:
+						smtp.starttls()
+					smtp.login(username, password)
+					smtp.send_message(msg)
+			else:
+				logger.info('Código de reset para %s: %s (válido por 15 min)', email, code)
+		except Exception as e:
+			logger.error('Falha ao enviar e-mail de reset para %s: %s', email, e)
 	return { 'success': True }
 
 @bp.post('/reset-password')
