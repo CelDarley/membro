@@ -18,6 +18,8 @@ ALLOWED_TYPES = {
 	'grupos_identitarios',
 }
 
+UF_LIST = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
+
 
 def is_admin_identity():
 	claims = get_jwt() or {}
@@ -37,7 +39,12 @@ def list_lookups():
 	if q:
 		query = query.filter(Lookup.value.ilike(f'%{q}%'))
 	p = query.order_by(Lookup.value.asc()).paginate(page=page, per_page=per_page, error_out=False)
-	data = [{'id': it.id, 'type': it.type, 'value': it.value} for it in p.items]
+	items = p.items
+	# Se for estado_origem e não houver registros, retornar UFs padrão
+	if type_ == 'estado_origem' and not items:
+		data = [{'id': None, 'type': 'estado_origem', 'value': uf} for uf in UF_LIST if (not q) or (q and uf.lower().find(q.lower()) != -1)]
+		return {'data': data, 'total': len(data)}
+	data = [{'id': it.id, 'type': it.type, 'value': it.value} for it in items]
 	return {'data': data, 'total': p.total}
 
 
@@ -109,6 +116,12 @@ def populate_from_membros():
 		'grupos_identitarios': Membro.grupos_identitarios,
 	}
 	inserted = 0
+	# Inserir UFs padrão para estado_origem
+	for uf in UF_LIST:
+		if not Lookup.query.filter_by(type='estado_origem', value=uf).first():
+			db.session.add(Lookup(type='estado_origem', value=uf))
+			inserted += 1
+	# Popular demais tipos a partir dos membros
 	for t, col in mapping.items():
 		vals = [r[0] for r in db.session.query(col).filter(col.isnot(None)).distinct().all()]
 		for v in vals:
