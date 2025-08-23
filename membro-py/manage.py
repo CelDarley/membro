@@ -117,7 +117,8 @@ def import_membros(path, truncate):
 		'concurso': ['concurso','classificacao','classificação'],
 		'cargo_efetivo': ['cargo efetivo','cargo_efetivo','cargo atual','cargo'],
 		'titularidade': ['titularidade'],
-		'email_pessoal': ['email','e-mail','e mail','e-mail pessoal','email pessoal','mail','email institucional','e-mail institucional'],
+		'email_pessoal': ['email pessoal','e-mail pessoal','email  pessoal','emailpessoal','e mail pessoal','email pessoal '],
+		'email_institucional': ['email institucional','e-mail institucional','mail institucional','email inst'],
 		'cargo_especial': ['cargo especial'],
 		'telefone_unidade': ['telefone unidade','tel unidade','telefone da unidade','telefone trabalho'],
 		'telefone_celular': ['telefone celular','celular','telefone movel','telefone móvel'],
@@ -155,13 +156,15 @@ def import_membros(path, truncate):
 
 	created = []
 	for r in rows:
+		email_p = get(r,'email_pessoal')
+		email_i = get(r,'email_institucional')
 		m = Membro(
 			nome = get(r,'nome'),
 			sexo = get(r,'sexo'),
 			concurso = str(get(r,'concurso') or '') or None,
 			cargo_efetivo = get(r,'cargo_efetivo'),
 			titularidade = get(r,'titularidade'),
-			email_pessoal = get(r,'email_pessoal'),
+			email_pessoal = (email_p or email_i),
 			cargo_especial = get(r,'cargo_especial'),
 			telefone_unidade = str(get(r,'telefone_unidade') or '') or None,
 			telefone_celular = str(get(r,'telefone_celular') or '') or None,
