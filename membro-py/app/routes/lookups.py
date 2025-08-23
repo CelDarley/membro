@@ -1,5 +1,5 @@
 from flask import Blueprint, request
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from sqlalchemy import func
 from ..db import db
 from ..models import Lookup, Membro
@@ -20,10 +20,8 @@ ALLOWED_TYPES = {
 
 
 def is_admin_identity():
-	ident = get_jwt_identity()
-	if isinstance(ident, dict):
-		return (ident.get('role') or '').lower() == 'admin'
-	return False
+	claims = get_jwt() or {}
+	return (claims.get('role') or '').lower() == 'admin'
 
 
 @bp.get('/lookups')
