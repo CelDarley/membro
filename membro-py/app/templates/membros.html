@@ -59,6 +59,9 @@
 		.suggest div:hover { background:#f1f5f9 }
 		/* garantir modais de filtro no topo */
 		#filterModal { z-index: 10001 }
+		.icon-btn { border:none; background:transparent; cursor:pointer; padding:0; margin-left:8px; display:inline-flex; align-items:center; vertical-align:middle }
+		.icon-btn svg { width:16px; height:16px; color:#64748b }
+		.icon-btn:hover svg { color:#334155 }
 	</style>
 </head>
 <body>
@@ -67,7 +70,6 @@
 		<input id="q" class="input" placeholder="Buscar..." list="suggestions" oninput="onMainInput()" />
 		<datalist id="suggestions"></datalist>
 		<button class="btn" onclick="search()">Pesquisar</button>
-		<button class="btn" onclick="clearAllFilters()" title="Limpar filtros">Limpar filtros</button>
 		<div class="profile" id="profile">
 			<button class="profile-btn" onclick="toggleProfile()">
 				<div class="avatar" id="avatar">?</div>
@@ -111,7 +113,12 @@
 				<th data-label="Carreira anterior" onclick="openFilterModal('Carreira anterior')">Carreira anterior</th>
 				<th data-label="Liderança" onclick="openFilterModal('Liderança')">Liderança</th>
 				<th data-label="Grupos identitários" onclick="openFilterModal('Grupos identitários')">Grupos identitários</th>
-				<th class="freeze-right">Ações</th>
+				<th class="freeze-right">Ações <button class="icon-btn" onclick="clearAllFilters()" title="Limpar filtros">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<circle cx="12" cy="12" r="9"></circle>
+						<line x1="5" y1="19" x2="19" y2="5"></line>
+					</svg>
+				</button></th>
 			</tr></thead><tbody></tbody></table>
 		</div>
 		<div id="pager" class="pager"></div>
