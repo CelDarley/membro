@@ -3,8 +3,36 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import func
 from ..db import db
 from ..models import Membro
+import json
 
 bp = Blueprint('membros', __name__)
+
+
+def label_to_column(label: str):
+	m = {
+		'Membro': Membro.nome,
+		'Mamp': None,  # não temos coluna separada
+		'Sexo': Membro.sexo,
+		'Concurso': Membro.concurso,
+		'Cargo efetivo': Membro.cargo_efetivo,
+		'Titularidade': Membro.titularidade,
+		'eMail pessoal': Membro.email_pessoal,
+		'Cargo Especial': Membro.cargo_especial,
+		'Telefone Unidade': Membro.telefone_unidade,
+		'Telefone celular': Membro.telefone_celular,
+		'Unidade Lotação': Membro.unidade_lotacao,
+		'Comarca Lotação': Membro.comarca_lotacao,
+		'Time de futebol e outros grupos extraprofissionais': Membro.time_extraprofissionais,
+		'Quantidade de filhos': Membro.quantidade_filhos,
+		'Nome dos filhos': Membro.nomes_filhos,
+		'Estado de origem': Membro.estado_origem,
+		'Acadêmico': Membro.academico,
+		'Pretensão de movimentação na carreira': Membro.pretensao_carreira,
+		'Carreira anterior': Membro.carreira_anterior,
+		'Liderança': Membro.lideranca,
+		'Grupos identitários': Membro.grupos_identitarios,
+	}
+	return m.get((label or '').strip())
 
 
 def apply_filters(query):
@@ -14,8 +42,25 @@ def apply_filters(query):
 		query = query.filter(
 			(Membro.nome.ilike(like)) | (Membro.comarca_lotacao.ilike(like)) | (Membro.cargo_efetivo.ilike(like))
 		)
+	# filtros por coluna vindos do front
 	filters_json = request.args.get('filters_json')
-	# para simplificar: ignorado por enquanto
+	if filters_json:
+		try:
+			filters = json.loads(filters_json)
+			if isinstance(filters, dict):
+				for label, values in filters.items():
+					if not values:
+						continue
+					col = label_to_column(label)
+					if not col:
+						continue
+					# normalizar values para strings
+					vals = [str(v).strip() for v in values if v is not None and str(v).strip() != '']
+					if not vals:
+						continue
+					query = query.filter(col.in_(vals))
+		except Exception:
+			pass
 	return query
 
 
@@ -54,7 +99,7 @@ def list_membros():
 	query = apply_filters(Membro.query)
 	page = int(request.args.get('page', 1))
 	per_page = int(request.args.get('per_page', 20))
-	p = query.order_by(Membro.id.desc()).paginate(page=page, per_page=per_page, error_out=False)
+	p = query.order_by(Membro.nome.asc(), Membro.id.asc()).paginate(page=page, per_page=per_page, error_out=False)
 	data = [to_row(m) for m in p.items]
 	return {'data': data, 'total': p.total}
 
@@ -70,16 +115,38 @@ def get_membro(id: int):
 @jwt_required()
 def aggregate_membros():
 	field = (request.args.get('field') or '').strip()
-	col = {
-		'Comarca Lotação': Membro.comarca_lotacao,
-		'Cargo efetivo': Membro.cargo_efetivo,
-	}.get(field)
+	col = label_to_column(field)
 	if not col:
 		return {'field': field, 'data': []}
 	query = apply_filters(Membro.query)
 	rows = query.with_entities(col.label('v'), func.count(Membro.id).label('c')).group_by(col).order_by(func.count(Membro.id).desc()).limit(int(request.args.get('limit', 50))).all()
 	data = [ {'v': r.v, 'c': int(r.c)} for r in rows if r.v ]
 	return {'field': field, 'data': data}
+
+
+@bp.get('/membros/distinct')
+@jwt_required()
+def distinct_membros():
+	field = (request.args.get('field') or '').strip()
+	limit = int(request.args.get('limit', 200))
+	col = label_to_column(field)
+	if not col:
+		return {'field': field, 'values': []}
+	query = apply_filters(Membro.query)
+	vals = [r[0] for r in query.with_entities(col).filter(col.isnot(None)).distinct().order_by(col.asc()).limit(limit).all()]
+	return {'field': field, 'values': vals}
+
+
+@bp.get('/membros/suggest')
+@jwt_required()
+def suggest_membros():
+	q = (request.args.get('q') or '').strip()
+	query = Membro.query
+	if q:
+		like = f"%{q}%"
+		query = query.filter(Membro.nome.ilike(like))
+	vals = [r[0] for r in query.with_entities(Membro.nome).filter(Membro.nome.isnot(None)).order_by(Membro.nome.asc()).limit(20).all()]
+	return {'values': vals}
 
 
 @bp.get('/membros/stats')
@@ -96,7 +163,7 @@ def stats_membros():
 @jwt_required()
 def create_membro():
 	ident = get_jwt_identity() or {}
-	role = (ident.get('role') or '').lower()
+	role = (ident.get('role') or '').lower() if isinstance(ident, dict) else None
 	if role != 'admin':
 		return { 'message': 'Apenas administradores podem criar registros.' }, 403
 	data = (request.get_json() or {}).get('data') or {}
@@ -132,7 +199,7 @@ def create_membro():
 @jwt_required()
 def update_membro(id: int):
 	ident = get_jwt_identity() or {}
-	role = (ident.get('role') or '').lower()
+	role = (ident.get('role') or '').lower() if isinstance(ident, dict) else None
 	if role != 'admin':
 		return { 'message': 'Apenas administradores podem editar registros.' }, 403
 	m = Membro.query.get_or_404(id)

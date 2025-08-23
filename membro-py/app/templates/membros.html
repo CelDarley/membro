@@ -12,6 +12,7 @@
 		.btn { padding: 8px 12px; border: 1px solid #334155; background: #334155; color: #fff; border-radius: 6px; cursor:pointer }
 		.table { border-collapse: collapse; width:100% }
 		.table th, .table td { border:1px solid #e2e8f0; padding:8px; font-size: 14px }
+		.table th { background:#f1f5f9; cursor:pointer; user-select:none }
 		.modal { position: fixed; inset:0; background: rgba(0,0,0,.5); display:none; align-items:center; justify-content:center }
 		.modal-inner { background: #fff; border-radius:8px; padding: 16px; width: 90%; max-width: 900px; max-height: 80vh; overflow: auto }
 		.grid { display:grid; gap:12px; grid-template-columns: repeat(auto-fit, minmax(320px,1fr)); align-items: stretch }
@@ -31,8 +32,10 @@
 </head>
 <body>
 	<div class="toolbar">
-		<input id="q" class="input" placeholder="Buscar..." />
+		<input id="q" class="input" placeholder="Buscar..." list="suggestions" oninput="debouncedSuggest()" />
+		<datalist id="suggestions"></datalist>
 		<button class="btn" onclick="search()">Pesquisar</button>
+		<button class="btn" onclick="clearAllFilters()" title="Limpar filtros">Limpar filtros</button>
 		<a class="btn" href="/login" style="margin-left:auto" onclick="localStorage.removeItem('token')">Sair</a>
 	</div>
 
@@ -43,12 +46,11 @@
 
 	<div id="panelTable" style="display:block">
 		<table class="table" id="tbl"><thead><tr>
-			<th>#</th>
-			<th>Membro</th>
-			<th>Sexo</th>
-			<th>Concurso</th>
-			<th>Cargo efetivo</th>
-			<th>eMail pessoal</th>
+			<th data-label="Membro" onclick="openFilterModal('Membro')">Membro</th>
+			<th data-label="Sexo" onclick="openFilterModal('Sexo')">Sexo</th>
+			<th data-label="Concurso" onclick="openFilterModal('Concurso')">Concurso</th>
+			<th data-label="Cargo efetivo" onclick="openFilterModal('Cargo efetivo')">Cargo efetivo</th>
+			<th data-label="eMail pessoal" onclick="openFilterModal('eMail pessoal')">eMail pessoal</th>
 			<th>Ações</th>
 		</tr></thead><tbody></tbody></table>
 		<div id="pager" class="pager"></div>
@@ -75,6 +77,23 @@
 		</div>
 	</div>
 
+	<div class="modal" id="filterModal">
+		<div class="modal-inner">
+			<div style="display:flex; justify-content:space-between; align-items:center">
+				<strong id="filterTitle">Filtrar</strong>
+				<div style="display:flex; gap:8px">
+					<button class="btn" onclick="applyFilterModal()">Aplicar</button>
+					<button class="btn" onclick="closeFilterModal()">Fechar</button>
+				</div>
+			</div>
+			<div style="display:flex; gap:8px; margin:8px 0">
+				<input id="filterSearch" class="input" placeholder="Buscar valor..." oninput="renderFilterOptions()" />
+				<button class="btn" onclick="clearFilterCurrent()">Limpar filtro desta coluna</button>
+			</div>
+			<div id="filterOptions" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap:8px"></div>
+		</div>
+	</div>
+
 	<script>
 	function guard(){ if(!localStorage.getItem('token')) location.href='/login' }
 	function token(){ return localStorage.getItem('token') || '' }
@@ -87,20 +106,24 @@
 		'Membro','Sexo','Concurso','Cargo efetivo','Titularidade','eMail pessoal','Cargo Especial','Telefone Unidade','Telefone celular','Unidade Lotação','Comarca Lotação','Time de futebol e outros grupos extraprofissionais','Quantidade de filhos','Nome dos filhos','Estado de origem','Acadêmico','Pretensão de movimentação na carreira','Carreira anterior','Liderança','Grupos identitários'
 	]
 	let perPage = 30, currentPage = 1, totalCount = 0, chartsLoaded = false
+	let columnFilters = {} // { label: [values] }
+	let filterCurrentLabel = null; let filterAllValues = []; let filterSelectedSet = new Set()
+
+	function filtersParam(){ try{ return encodeURIComponent(JSON.stringify(columnFilters||{})) }catch{ return '' } }
 
 	function show(rows){
 		const tbody = document.querySelector('#tbl tbody');
 		tbody.innerHTML = ''
 		for(const r of rows){
 			const tr = document.createElement('tr')
-			tr.innerHTML = `<td>${r.id}</td><td>${r.data['Membro']||''}</td><td>${r.data['Sexo']||''}</td><td>${r.data['Concurso']||''}</td><td>${r.data['Cargo efetivo']||''}</td><td>${r.data['eMail pessoal']||''}</td><td><button class='btn' onclick='openModal(${r.id})'>Ver</button></td>`
+			tr.innerHTML = `<td>${r.data['Membro']||''}</td><td>${r.data['Sexo']||''}</td><td>${r.data['Concurso']||''}</td><td>${r.data['Cargo efetivo']||''}</td><td>${r.data['eMail pessoal']||''}</td><td><button class='btn' onclick='openModal(${r.id})'>Ver</button></td>`
 			tbody.appendChild(tr)
 		}
 	}
 	async function search(page=1){
 		guard(); currentPage = page
 		const q = document.getElementById('q').value
-		const r = await fetch(`/api/membros?page=${page}&per_page=${perPage}&q=${encodeURIComponent(q)}`, { headers: { 'Content-Type':'application/json', ...auth() } })
+		const r = await fetch(`/api/membros?page=${page}&per_page=${perPage}&q=${encodeURIComponent(q)}&filters_json=${filtersParam()}`, { headers: { 'Content-Type':'application/json', ...auth() } })
 		if(r.status===401||r.status===422){ localStorage.removeItem('token'); location.href='/login'; return }
 		const data = await r.json()
 		show(data.data || [])
@@ -113,7 +136,7 @@
 		const canPrev = currentPage > 1
 		const canNext = currentPage < totalPages
 		el.innerHTML = `
-			<div style='margin-right:auto'>Total: ${totalCount} registros</div>
+			<div style='margin-right:auto'>Total: ${totalCount} registros ${Object.keys(columnFilters).length? '(com filtros)':''}</div>
 			<button class='btn' ${canPrev?'':'disabled'} onclick='gotoPage(${currentPage-1})'>Anterior</button>
 			<span>Página ${currentPage} de ${totalPages}</span>
 			<button class='btn' ${canNext?'':'disabled'} onclick='gotoPage(${currentPage+1})'>Próxima</button>
@@ -174,10 +197,51 @@
 	}
 	function loadChartsIfNeeded(){ if(chartsLoaded) return; loadChartComarca(); loadChartCargo(); loadMap(); loadGraph(); chartsLoaded=true }
 
+	// Autocomplete de busca por nome
+	let suggestTimer = null
+	function debouncedSuggest(){ clearTimeout(suggestTimer); suggestTimer = setTimeout(suggest, 200) }
+	async function suggest(){
+		const q = document.getElementById('q').value.trim(); if(!q) { document.getElementById('suggestions').innerHTML=''; return }
+		const r = await fetch(`/api/membros/suggest?q=${encodeURIComponent(q)}`, { headers: { ...auth() } })
+		if(!r.ok) return; const data = await r.json(); const list = document.getElementById('suggestions');
+		list.innerHTML = (data.values||[]).map(v=>`<option value="${String(v).replace(/"/g,'&quot;')}"></option>`).join('')
+	}
+
+	// Filtro por coluna (modal)
+	async function openFilterModal(label){
+		filterCurrentLabel = label; filterSelectedSet = new Set(columnFilters[label]||[])
+		document.getElementById('filterTitle').textContent = `Filtrar: ${label}`
+		document.getElementById('filterSearch').value=''
+		const r = await fetch(`/api/membros/distinct?field=${encodeURIComponent(label)}&limit=500&filters_json=${filtersParam()}`, { headers: { ...auth() } })
+		const data = await r.json(); filterAllValues = data.values||[]
+		renderFilterOptions()
+		document.getElementById('filterModal').style.display='flex'
+	}
+	function renderFilterOptions(){
+		const q = document.getElementById('filterSearch').value.trim().toLowerCase()
+		const box = document.getElementById('filterOptions'); box.innerHTML=''
+		const vals = filterAllValues.filter(v=> String(v||'').toLowerCase().includes(q))
+		for(const v of vals){
+			const id = `opt_${filterCurrentLabel}_${btoa(unescape(encodeURIComponent(String(v))))}`
+			const div = document.createElement('div')
+			div.innerHTML = `<label style='display:flex; gap:8px; align-items:center'><input type='checkbox' id='${id}' ${filterSelectedSet.has(String(v))?'checked':''} onchange='toggleFilterValue("${String(v).replace(/"/g,'&quot;')}")' /> <span>${String(v)||'(vazio)'}</span></label>`
+			box.appendChild(div)
+		}
+	}
+	function toggleFilterValue(val){ val=String(val); if(filterSelectedSet.has(val)) filterSelectedSet.delete(val); else filterSelectedSet.add(val) }
+	function applyFilterModal(){
+		const arr = Array.from(filterSelectedSet)
+		if(arr.length) columnFilters[filterCurrentLabel]=arr; else delete columnFilters[filterCurrentLabel]
+		closeFilterModal(); search(1)
+	}
+	function clearFilterCurrent(){ delete columnFilters[filterCurrentLabel]; filterSelectedSet = new Set(); renderFilterOptions() }
+	function closeFilterModal(){ document.getElementById('filterModal').style.display='none' }
+	function clearAllFilters(){ columnFilters = {}; search(1) }
+
 	async function loadChartComarca(){
 		guard()
 		const q = document.getElementById('q').value
-		const r = await fetch(`/api/membros/aggregate?field=${encodeURIComponent('Comarca Lotação')}&limit=20&q=${encodeURIComponent(q)}`, { headers: { ...auth() } })
+		const r = await fetch(`/api/membros/aggregate?field=${encodeURIComponent('Comarca Lotação')}&limit=20&q=${encodeURIComponent(q)}&filters_json=${filtersParam()}`, { headers: { ...auth() } })
 		const data = await r.json()
 		const el = document.getElementById('chartComarca')
 		const chart = echarts.init(el)
@@ -188,7 +252,7 @@
 	async function loadChartCargo(){
 		guard()
 		const q = document.getElementById('q').value
-		const r = await fetch(`/api/membros/aggregate?field=${encodeURIComponent('Cargo efetivo')}&limit=10&q=${encodeURIComponent(q)}`, { headers: { ...auth() } })
+		const r = await fetch(`/api/membros/aggregate?field=${encodeURIComponent('Cargo efetivo')}&limit=10&q=${encodeURIComponent(q)}&filters_json=${filtersParam()}`, { headers: { ...auth() } })
 		const data = await r.json()
 		const el = document.getElementById('chartCargo')
 		const chart = echarts.init(el)
@@ -205,7 +269,7 @@
 		const el = document.getElementById('chartMap')
 		const chart = echarts.init(el)
 		const q = document.getElementById('q').value
-		const r = await fetch(`/api/membros/aggregate?field=${encodeURIComponent('Comarca Lotação')}&limit=9999&q=${encodeURIComponent(q)}`, { headers: { ...auth() } })
+		const r = await fetch(`/api/membros/aggregate?field=${encodeURIComponent('Comarca Lotação')}&limit=9999&q=${encodeURIComponent(q)}&filters_json=${filtersParam()}`, { headers: { ...auth() } })
 		const data = await r.json()
 		const entries = {}; for(const it of (data.data||[])) entries[String(it.v||'').toUpperCase()] = it.c
 		const seriesData = []
@@ -223,7 +287,7 @@
 		let page=1; const per=500; const maxPages=20; const all=[]
 		try{
 			while(page<=maxPages){
-				const r = await fetch(`/api/membros?page=${page}&per_page=${per}`, { headers: { ...auth() } })
+				const r = await fetch(`/api/membros?page=${page}&per_page=${per}&filters_json=${filtersParam()}`, { headers: { ...auth() } })
 				if(!r.ok) break; const data=await r.json(); const rows=data.data||[]; all.push(...rows); if(rows.length<per) break; page++
 			}
 		}catch{}
