@@ -139,8 +139,26 @@
 		<div class="grid">
 			<div class="card"><div class="card-body"><div style="display:flex;justify-content:space-between"><strong>Top 20 por Comarca</strong><button class="btn" onclick="loadChartComarca()">Atualizar</button></div><div id="chartComarca" style="width:100%;height:320px"></div></div></div>
 			<div class="card"><div class="card-body"><div style="display:flex;justify-content:space-between"><strong>Top 10 por Cargo efetivo</strong><button class="btn" onclick="loadChartCargo()">Atualizar</button></div><div id="chartCargo" style="width:100%;height:320px"></div></div></div>
-			<div class="card"><div class="card-body"><div style="display:flex;justify-content:space-between"><strong>Mapa por Comarca (MG)</strong><button class="btn" onclick="loadMap()">Atualizar</button></div><div id="chartMap" style="width:100%;height:420px"></div><div id="mapMsg" style="opacity:.8;font-size:12px"></div></div></div>
-			<div class="card"><div class="card-body"><div style="display:flex;justify-content:space-between"><strong>Relacionamentos (Amigos no MP)</strong><button class="btn" onclick="loadGraph()">Atualizar</button></div><div id="chartGraph" style="width:100%;height:420px"></div><div id="graphMsg" style="opacity:.8;font-size:12px"></div></div></div>
+			<div class="card"><div class="card-body">
+				<div style="display:flex;justify-content:space-between; gap:8px; align-items:center">
+					<strong>Relacionamentos (Amigos no MP)</strong>
+					<div style="display:flex; gap:8px; align-items:center">
+						<input id="graphFilter" class="input" placeholder="Filtrar por membro..." oninput="debouncedLoadGraph()" style="max-width:280px" />
+						<button class="btn" onclick="loadGraph()">Atualizar</button>
+					</div>
+				</div>
+				<div id="chartGraph" style="width:100%;height:420px"></div><div id="graphMsg" style="opacity:.8;font-size:12px"></div>
+			</div></div>
+			<div class="card"><div class="card-body">
+				<div style="display:flex;justify-content:space-between; gap:8px; align-items:center">
+					<strong>Relacionamentos de Parentesco</strong>
+					<div style="display:flex; gap:8px; align-items:center">
+						<input id="kinFilter" class="input" placeholder="Filtrar por membro..." oninput="debouncedLoadKinGraph()" style="max-width:280px" />
+						<button class="btn" onclick="loadKinGraph()">Atualizar</button>
+					</div>
+				</div>
+				<div id="chartKin" style="width:100%;height:420px"></div><div id="kinMsg" style="opacity:.8;font-size:12px"></div>
+			</div></div>
 		</div>
 	</div>
 
@@ -374,6 +392,7 @@
 		renderModal()
 	}
 	let amigoIds = new Set(); let amigoNames = []
+	let relList = []; let relTargetId = null; let relTargetName = ''
 	async function loadAmigosInitial(){
 		const ids = currentData['Amigos no MP (IDs)']||[]; const nomes = currentData['Amigos no MP (Nomes)']||[]
 		amigoIds = new Set(Array.isArray(ids)? ids.map(n=>Number(n)).filter(n=>Number.isFinite(n)) : [])
@@ -421,11 +440,66 @@
 		// Se admin, bloco para amigos no MP
 		if(admin){
 			html += `<div class='row'><label class='label'>Amigos no MP</label><div id='amigosBox'></div></div>`
+			// Parentescos
+			html += `<div class='row'><label class='label'>Parentescos</label><div id='relBox'></div></div>`
 		}
 		html += `</div>`
 		document.getElementById('modalBody').innerHTML = html
 		if(admin){ loadAmigosInitial(); renderAmigosUI(document.getElementById('amigosBox')) }
+		if(admin){ loadRelationships(); }
 	}
+
+	async function loadRelationships(){
+		try{ const r=await fetch(`/api/membros/${currentId}/relationships`, { headers:{ ...auth() } }); const d=await r.json(); relList = d.data||[] }catch{ relList=[] }
+		renderRelationshipsUI(document.getElementById('relBox'))
+	}
+	function renderRelationshipsUI(container){
+		if(!container) return; container.innerHTML=''
+		// lista atual
+		const list=document.createElement('div')
+		if(!relList.length){ list.innerHTML='<div style="opacity:.7">Sem parentescos.</div>' }
+		else{
+			list.innerHTML = relList.map(r=>`<div class='chip'><span>${r.other_name} — ${mapDegree(r.degree)} ${r.direction==='in'?'(dele)':''}</span> <button onclick='deleteRelationship(${r.id})' title='Remover'>&times;</button></div>`).join('')
+		}
+		container.appendChild(list)
+		// formulário de adição
+		const form=document.createElement('div')
+		form.innerHTML = `
+			<div style='display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:8px'>
+				<select id='relDegree' class='input'>
+					<option value=''>Grau...</option>
+					<option value='spouse'>Esposo(a)</option>
+					<option value='parent'>Pai/Mãe</option>
+					<option value='child'>Filho(a)</option>
+					<option value='sibling'>Irmão(ã)</option>
+				</select>
+				<div style='position:relative'>
+					<input id='relSearch' class='input' placeholder='Buscar membro...' oninput='relDebouncedSuggest()' />
+					<div id='relSuggest' class='suggest' style='display:none; position:absolute; left:0; right:0'></div>
+				</div>
+			</div>
+			<div style='margin-top:8px'><button class='btn' onclick='addRelationship()'>Adicionar parentesco</button></div>
+		`
+		container.appendChild(form)
+	}
+	function mapDegree(d){ switch(String(d||'').toLowerCase()){ case 'spouse': return 'Esposo(a)'; case 'parent': return 'Pai/Mãe'; case 'child': return 'Filho(a)'; case 'sibling': return 'Irmão(ã)'; default: return d } }
+	let relTimer=null
+	function relDebouncedSuggest(){ clearTimeout(relTimer); relTimer=setTimeout(relSuggest, 200) }
+	async function relSuggest(){
+		const el=document.getElementById('relSearch'); const box=document.getElementById('relSuggest'); if(!el||!box) return; const q=el.value.trim(); if(!q){ box.style.display='none'; box.innerHTML=''; relTargetId=null; return }
+		const r=await fetch(`/api/membros/search-min?q=${encodeURIComponent(q)}`, { headers:{ ...auth() } }); if(!r.ok){ box.style.display='none'; return }
+		const d=await r.json(); const items=(d.data||[]).filter(it=>Number(it.id)!==Number(currentId)); if(!items.length){ box.style.display='none'; box.innerHTML=''; return }
+		box.innerHTML = items.map(it=>`<div onclick='selectRelTarget(${it.id}, ${JSON.stringify(it.nome).replace(/"/g,'&quot;')})'>${it.nome}</div>`).join('')
+		box.style.display='block'
+	}
+	function selectRelTarget(id, nome){ relTargetId=Number(id); relTargetName=String(nome||''); const inp=document.getElementById('relSearch'); if(inp) inp.value=relTargetName; const box=document.getElementById('relSuggest'); if(box){ box.style.display='none'; box.innerHTML='' } }
+	async function addRelationship(){
+		const degree=(document.getElementById('relDegree')||{}).value||''; if(!degree){ toast('Selecione o grau','error'); return }
+		if(!Number.isFinite(relTargetId)||relTargetId===Number(currentId)){ toast('Selecione o membro','error'); return }
+		const r=await fetch(`/api/membros/${currentId}/relationships`, { method:'POST', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify({ degree, target_id: relTargetId }) })
+		if(r.ok){ toast('Parentesco adicionado','success'); relTargetId=null; relTargetName=''; const inp=document.getElementById('relSearch'); if(inp) inp.value=''; loadRelationships() } else { let msg=`Falha ao adicionar (${r.status})`; try{ const d=await r.json(); if(d?.message) msg=d.message }catch{ try{ const t=await r.text(); if(t) msg+=`: ${t.substring(0,200)}` }catch{} } toast(msg,'error') }
+	}
+	async function deleteRelationship(relId){ if(!confirm('Remover este parentesco?')) return; const r=await fetch(`/api/relationships/${relId}`, { method:'DELETE', headers:{ ...auth() } }); if(r.ok){ toast('Removido','success'); loadRelationships() } else { toast('Falha ao remover','error') } }
 
 	async function openCreate(){
 		if(!isAdmin()){ toast('Apenas administradores', 'error'); return }
@@ -489,7 +563,31 @@
 			tBtn.classList.add('active'); cBtn.classList.remove('active'); lBtn.classList.remove('active'); uBtn.classList.remove('active'); tPanel.style.display='block'; cPanel.style.display='none'; lPanel.style.display='none'; uPanel.style.display='none';
 		}
 	}
-	function loadChartsIfNeeded(){ if(chartsLoaded) return; loadChartComarca(); loadChartCargo(); loadMap(); loadGraph(); chartsLoaded=true }
+	function loadChartsIfNeeded(){ if(chartsLoaded) return; loadChartComarca(); loadChartCargo(); loadGraph(); loadKinGraph(); chartsLoaded=true }
+	let kinTimer=null; function debouncedLoadKinGraph(){ clearTimeout(kinTimer); kinTimer=setTimeout(loadKinGraph, 300) }
+	async function loadKinGraph(){
+		const el = document.getElementById('chartKin')
+		const chart = echarts.init(el)
+		// carregar membros (sem filtros da tabela, para mapear todos os nomes)
+		let page=1; const per=500; const maxPages=20; const all=[]
+		try{ while(page<=maxPages){ const r=await fetch(`/api/membros?page=${page}&per_page=${per}`, { headers:{ ...auth() } }); if(!r.ok) break; const d=await r.json(); const rows=d.data||[]; all.push(...rows); if(rows.length<per) break; page++ } }catch{}
+		const idToName={}, nameToId={}; for(const r of all){ const nm=String(r.data['Membro']||r.data['Nome']||('#'+r.id)); idToName[r.id]=nm; const key=nm.normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase(); if(key&&!nameToId[key]) nameToId[key]=r.id }
+		// carregar relacionamentos
+		let rels=[]; try{ const rr=await fetch('/api/relationships', { headers:{ ...auth() } }); if(!rr.ok){ let msg=`Falha ao carregar (${rr.status})`; try{ const d=await rr.json(); if(d?.message) msg=d.message }catch{ try{ const t=await rr.text(); if(t) msg+=`: ${t.substring(0,200)}` }catch{} } document.getElementById('kinMsg').textContent=msg; chart.setOption({ series:[{ type:'graph', data:[], links:[] }] }); return } const dd=await rr.json(); rels=dd.data||[] }catch(e){ document.getElementById('kinMsg').textContent='Erro ao carregar'; chart.setOption({ series:[{ type:'graph', data:[], links:[] }] }); return }
+		if(!rels.length){ chart.setOption({ series:[{ type:'graph', data:[], links:[] }] }); document.getElementById('kinMsg').textContent='Sem dados.'; return }
+		// construir grafo
+		const edgeSet=new Set(); const degree={};
+		for(const r of rels){ const a=String(r.source_id), b=String(r.target_id); const key = (Number(a)<Number(b))? `${a}-${b}` : `${b}-${a}`; if(!edgeSet.has(key) && a!==b){ edgeSet.add(key); degree[a]=(degree[a]||0)+1; degree[b]=(degree[b]||0)+1 } }
+		let nodesAll = Array.from(new Set(Array.from(edgeSet).flatMap(k=>k.split('-')))).map(id=>({ id:String(id), name:idToName[id]||('#'+id), value: degree[id]||1 }))
+		if(!nodesAll.length){ chart.setOption({ series:[{ type:'graph', data:[], links:[] }] }); document.getElementById('kinMsg').textContent='Sem relacionamentos.'; return }
+		let linksArr = Array.from(edgeSet).map(k=>{ const [a,b]=k.split('-').map(s=>String(s)); return { source:a, target:b } })
+		let nodesArr = nodesAll
+		const filterName = (document.getElementById('kinFilter')?.value||'').trim()
+		if(filterName){ const norm=(s)=>String(s||'').normalize('NFD').replace(/[^\p{L}\p{N}\s]/gu,'').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase(); const key=norm(filterName); let targetId=nameToId[key]||null; if(!targetId){ for(const [id,nm] of Object.entries(idToName)){ if(norm(nm).includes(key)){ targetId=Number(id); break } } } if(!targetId){ chart.setOption({ series:[{ type:'graph', data:[], links:[] }] }); document.getElementById('kinMsg').textContent='Membro não encontrado.'; return } linksArr=linksArr.filter(e=> (e.source===String(targetId)||e.target===String(targetId))); const keepIds=new Set([String(targetId), ...linksArr.flatMap(e=>[e.source,e.target])]); nodesArr=nodesAll.filter(n=>keepIds.has(String(n.id))) }
+		const nodes = nodesArr.map(n=>({ ...n, symbolSize: Math.max(8, 8+(n.value||0)*2) }))
+		chart.setOption({ tooltip:{ formatter:(p)=>p.data?.name||'' }, series:[{ type:'graph', layout:'force', roam:true, label:{ show:true, position:'right', formatter:'{b}', fontSize:10 }, data:nodes, links: linksArr, force:{ repulsion:120, edgeLength:[30,120] }, lineStyle:{ color:'#94a3b8' }, itemStyle:{ color:'#16a34a' } }] })
+		document.getElementById('kinMsg').textContent=''
+	}
 
 	// Autocomplete + busca em tempo real
 	let suggestTimer = null, searchTimer = null
@@ -578,6 +676,7 @@
 		document.getElementById('mapMsg').textContent = mgGeoLoaded? '' : 'Não foi possível carregar o mapa do IBGE agora.'
 	}
 
+	let graphTimer=null; function debouncedLoadGraph(){ clearTimeout(graphTimer); graphTimer=setTimeout(loadGraph, 300) }
 	async function loadGraph(){
 		const el = document.getElementById('chartGraph')
 		const chart = echarts.init(el)
@@ -597,9 +696,25 @@
 		}
 		let nodesAll = Array.from(new Set(Array.from(edgeSet).flatMap(k=>k.split('-').map(s=>Number(s))))).map(id=>({ id:String(id), name:idToName[id]||('#'+id), value: degree[id]||1 }))
 		if(!nodesAll.length){ chart.setOption({ series:[{ type:'graph', data:[], links:[] }] }); document.getElementById('graphMsg').textContent='Sem relacionamentos.'; return }
-		const links = Array.from(edgeSet).map(k=>{ const [a,b]=k.split('-').map(s=>String(s)); return { source:a, target:b } })
-		const nodes = nodesAll.map(n=>({ ...n, symbolSize: Math.max(8, 8+(n.value||0)*2) }))
-		chart.setOption({ tooltip:{ formatter:(p)=>p.data?.name||'' }, series:[{ type:'graph', layout:'force', roam:true, label:{ show:true, position:'right', formatter:'{b}', fontSize:10 }, data:nodes, links, force:{ repulsion:120, edgeLength:[30,120] }, lineStyle:{ color:'#94a3b8' }, itemStyle:{ color:'#2563eb' } }] })
+		// aplicar filtro por membro, se houver
+		const filterName = (document.getElementById('graphFilter')?.value||'').trim()
+		let linksArr = Array.from(edgeSet).map(k=>{ const [a,b]=k.split('-').map(s=>String(s)); return { source:a, target:b } })
+		let nodesArr = nodesAll
+		if(filterName){
+			const norm = (s)=>String(s||'').normalize('NFD').replace(/[^\p{L}\p{N}\s]/gu,'').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase()
+			const key = norm(filterName)
+			let targetId = nameToId[key] || null
+			if(!targetId){
+				// tentativa por contains
+				for(const [id,nm] of Object.entries(idToName)){ if(norm(nm).includes(key)){ targetId = Number(id); break } }
+			}
+			if(!targetId){ chart.setOption({ series:[{ type:'graph', data:[], links:[] }] }); document.getElementById('graphMsg').textContent='Membro não encontrado.'; return }
+			linksArr = linksArr.filter(e=> (e.source===String(targetId) || e.target===String(targetId)))
+			const keepIds = new Set([String(targetId), ...linksArr.flatMap(e=>[e.source,e.target])])
+			nodesArr = nodesAll.filter(n=> keepIds.has(String(n.id)))
+		}
+		const nodes = nodesArr.map(n=>({ ...n, symbolSize: Math.max(8, 8+(n.value||0)*2) }))
+		chart.setOption({ tooltip:{ formatter:(p)=>p.data?.name||'' }, series:[{ type:'graph', layout:'force', roam:true, label:{ show:true, position:'right', formatter:'{b}', fontSize:10 }, data:nodes, links: linksArr, force:{ repulsion:120, edgeLength:[30,120] }, lineStyle:{ color:'#94a3b8' }, itemStyle:{ color:'#2563eb' } }] })
 		document.getElementById('graphMsg').textContent=''
 	}
 
