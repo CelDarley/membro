@@ -521,7 +521,16 @@
 	async function saveCreate(){
 		const inputs = document.querySelectorAll('#createBody [data-key]')
 		const payload = { }
-		for(const el of inputs){ let v=el.value; if(el.getAttribute('data-key')==='Quantidade de filhos'){ v = (v===''? '' : String(Number(v))) } payload[el.getAttribute('data-key')] = v }
+		for(const el of inputs){
+			let v = el.value
+			const k = el.getAttribute('data-key')
+			if(k==='Quantidade de filhos'){
+				v = (v===''? '' : String(Number(v)))
+			}else if(typeof v === 'string'){
+				v = v.toUpperCase()
+			}
+			payload[k] = v
+		}
 		try{
 			const r = await fetch('/api/membros', { method:'POST', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify({ data: payload }) })
 			if(!r.ok){ toast('Falha ao criar', 'error'); return }
@@ -537,6 +546,8 @@
 			if(key==='Quantidade de filhos'){
 				const n = Number(val)
 				val = Number.isFinite(n) ? String(n) : ''
+			}else if(typeof val === 'string'){
+				val = val.toUpperCase()
 			}
 			payload[key] = val
 		}
@@ -721,8 +732,8 @@
 	// Lookups CRUD (aba Cadastros)
 	async function lkPopulate(){ try{ await fetch('/api/lookups/populate-from-membros', { method:'POST', headers:{ ...auth() } }) }catch(e){} }
 	async function lkLoadList(page=1){ const type=document.getElementById('lkType').value; const q=document.getElementById('lkQ').value.trim(); const r=await fetch(`/api/lookups?type=${encodeURIComponent(type)}&q=${encodeURIComponent(q)}&page=${page}&per_page=200`, { headers:{ ...auth() } }); const d=await r.json(); const tb=document.getElementById('lkBody'); tb.innerHTML=''; for(const it of (d.data||[])){ const tr=document.createElement('tr'); tr.innerHTML=`<td><input class='input' value=\"${String(it.value).replace(/\"/g,'&quot;')}\" data-id='${it.id}' style='width:100%'/></td><td><button class='btn' onclick='lkSave(${it.id})'>Salvar</button> <button class='btn' onclick='lkDelete(${it.id})'>Excluir</button></td>`; tb.appendChild(tr) } }
-	async function lkCreate(){ const type=document.getElementById('lkType').value; const value=document.getElementById('lkNew').value.trim(); if(!value){ toast('Informe um valor', 'error'); return } const r=await fetch('/api/lookups', { method:'POST', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify({ type, value }) }); if(r.ok){ document.getElementById('lkNew').value=''; toast('Adicionado', 'success'); lkLoadList() } else { toast('Falha ao adicionar', 'error') } }
-	async function lkSave(id){ const inp = document.querySelector(`[data-id="${id}"]`); const value=inp.value.trim(); const r=await fetch(`/api/lookups/${id}`, { method:'PUT', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify({ value }) }); if(r.ok){ toast('Salvo', 'success'); lkLoadList() } else { toast('Falha ao salvar', 'error') } }
+	async function lkCreate(){ const type=document.getElementById('lkType').value; let value=document.getElementById('lkNew').value.trim(); if(!value){ toast('Informe um valor', 'error'); return } value = value.toUpperCase(); const r=await fetch('/api/lookups', { method:'POST', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify({ type, value }) }); if(r.ok){ document.getElementById('lkNew').value=''; toast('Adicionado', 'success'); lkLoadList() } else { toast('Falha ao adicionar', 'error') } }
+	async function lkSave(id){ const inp = document.querySelector(`[data-id="${id}"]`); let value=inp.value.trim(); value = value.toUpperCase(); const r=await fetch(`/api/lookups/${id}`, { method:'PUT', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify({ value }) }); if(r.ok){ toast('Salvo', 'success'); lkLoadList() } else { toast('Falha ao salvar', 'error') } }
 	async function lkDelete(id){ if(!confirm('Excluir este valor?')) return; const r=await fetch(`/api/lookups/${id}`, { method:'DELETE', headers:{ ...auth() } }); if(r.ok){ toast('Excluído', 'success'); lkLoadList() } else { toast('Falha ao excluir', 'error') } }
 	async function lkInit(){ await lkPopulate(); lkLoadList() }
 
