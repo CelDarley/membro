@@ -159,6 +159,7 @@
 				</div>
 				<div id="chartKin" style="width:100%;height:420px"></div><div id="kinMsg" style="opacity:.8;font-size:12px"></div>
 			</div></div>
+			<div class="card"><div class="card-body"><div style="display:flex;justify-content:space-between; gap:8px; align-items:center"><strong>Mapa por Comarca (Pinos)</strong><div style="display:flex; gap:8px; align-items:center"><input id="pinFilter" class="input" placeholder="Filtrar por membro..." oninput="debouncedLoadPinMap()" style="max-width:280px" /><button class="btn" onclick="loadPinMap()">Atualizar</button></div></div><div id="chartPinMap" style="width:100%;height:420px"></div><div id="pinMsg" style="opacity:.8;font-size:12px"></div></div></div>
 		</div>
 	</div>
 
@@ -574,7 +575,7 @@
 			tBtn.classList.add('active'); cBtn.classList.remove('active'); lBtn.classList.remove('active'); uBtn.classList.remove('active'); tPanel.style.display='block'; cPanel.style.display='none'; lPanel.style.display='none'; uPanel.style.display='none';
 		}
 	}
-	function loadChartsIfNeeded(){ if(chartsLoaded) return; loadChartComarca(); loadChartCargo(); loadGraph(); loadKinGraph(); chartsLoaded=true }
+	function loadChartsIfNeeded(){ if(chartsLoaded) return; loadChartComarca(); loadChartCargo(); loadPinMap(); loadGraph(); loadKinGraph(); chartsLoaded=true }
 	let kinTimer=null; function debouncedLoadKinGraph(){ clearTimeout(kinTimer); kinTimer=setTimeout(loadKinGraph, 300) }
 	async function loadKinGraph(){
 		const el = document.getElementById('chartKin')
@@ -668,7 +669,19 @@
 	}
 
 	let mgGeoLoaded=false, mgGeoFeatures=[]
-	async function ensureMG(){ if(mgGeoLoaded) return; try{ const resp=await fetch('https://servicodados.ibge.gov.br/api/v3/malhas/municipios/31?formato=application/vnd.geo+json'); if(resp.ok){ const geo=await resp.json(); if(geo&&Array.isArray(geo.features)&&geo.features.length){ echarts.registerMap('mg_municipios', geo); mgGeoLoaded=true; mgGeoFeatures=geo.features; } } } catch(e) { mgGeoLoaded=false }
+	async function ensureMG(){
+		if(mgGeoLoaded) return;
+		// 1) tenta arquivo local
+		try{
+			const rLocal = await fetch('/static/mg.geo.json')
+			if(rLocal.ok){ const geo=await rLocal.json(); if(geo&&Array.isArray(geo.features)&&geo.features.length){ echarts.registerMap('mg_municipios', geo); mgGeoLoaded=true; mgGeoFeatures=geo.features; return } }
+		}catch(e){}
+		// 2) fallback IBGE
+		try{
+			const r=await fetch('https://servicodados.ibge.gov.br/api/v3/malhas/municipios/31?formato=application/vnd.geo+json')
+			if(r.ok){ const geo=await r.json(); if(geo&&Array.isArray(geo.features)&&geo.features.length){ echarts.registerMap('mg_municipios', geo); mgGeoLoaded=true; mgGeoFeatures=geo.features; return } }
+		}catch(e){}
+		mgGeoLoaded=false
 	}
 	async function loadMap(){
 		await ensureMG()
@@ -752,6 +765,80 @@
 	async function saveSelfPwd(){ const current_password=document.getElementById('selfPwdCurrent').value; const new_password=document.getElementById('selfPwdNew').value; const confirm=document.getElementById('selfPwdConfirm').value; if(!current_password||!new_password){ toast('Informe as senhas','error'); return } if(new_password!==confirm){ toast('Confirmação não confere','error'); return } const r=await fetch('/api/auth/change-password', { method:'POST', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify({ current_password, new_password, confirm }) }); if(r.ok){ toast('Senha alterada','success'); closeSelfPwd() } else { let msg='Falha ao alterar senha'; try{ const d=await r.json(); if(d?.message) msg=d.message }catch{} toast(msg,'error') } }
 
 	renderHeaderFilters(); showTab('table'); loadMe(); search(1)
+
+	let pinTimer=null; function debouncedLoadPinMap(){ clearTimeout(pinTimer); pinTimer=setTimeout(loadPinMap, 300) }
+	function featureCentroid(feat){ try{ const geom=feat.geometry; if(!geom) return null; const type=geom.type; const coords=geom.coordinates; const centroid=(arr)=>{ let x=0,y=0,n=0; for(const p of arr){ x+=p[0]; y+=p[1]; n++ } return n? [x/n,y/n] : null }; if(type==='Polygon'){ let pts=[]; for(const ring of coords){ pts.push(...ring) } return centroid(pts) } if(type==='MultiPolygon'){ let pts=[]; for(const poly of coords){ for(const ring of poly){ pts.push(...ring) } } return centroid(pts) } return null }catch(e){ return null } }
+	function normStr(s){ return String(s||'').normalize('NFD').replace(/[^\p{L}\p{N}\s]/gu,'').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase() }
+	function sanitizeComarca(raw){
+		let s = normStr(raw)
+		// remover termos comuns
+		s = s.replace(/^COMARCA\s+DA\s+/,'').replace(/^COMARCA\s+DE\s+/,'').replace(/^COMARCA\s+DO\s+/,'').replace(/^COMARCA\s+/,'')
+		// remover sufixos entre parênteses ou após traços/barras
+		s = s.replace(/\(.*?\)/g,'').replace(/\s+-\s+.*$/,'').replace(/\s+\/\s+.*$/,'').trim()
+		// mapeamentos especiais
+		const aliases = {
+			'CAPITAL': 'BELO HORIZONTE',
+			'BELO HORIZONTE (CAPITAL)': 'BELO HORIZONTE'
+		}
+		if(aliases[s]) return aliases[s]
+		return s
+	}
+	async function loadPinMap(){
+		await ensureMG()
+		const el=document.getElementById('chartPinMap'); const chart=echarts.init(el)
+		if(!mgGeoLoaded || !(mgGeoFeatures||[]).length){ chart.clear(); document.getElementById('pinMsg').textContent='Mapa do IBGE indisponível no momento.'; return }
+		// montar mapa de nome->centro da feature
+		const nameToCenter={}
+		for(const f of (mgGeoFeatures||[])){ const nm=String(f.properties?.name||''); const c=featureCentroid(f); if(nm && c) nameToCenter[normStr(nm)]=c }
+		// helper: resolver centro por igualdade ou aproximação
+		function resolveCenter(raw){ const key=normalizeKey(raw); if(!key) return null; let c=nameToCenter[key]||null; if(c) return c; for(const [munKey,center] of Object.entries(nameToCenter)){ if(key.includes(munKey) || munKey.includes(key)){ return center } } return null }
+		function normalizeKey(raw){ const s = sanitizeComarca(raw); return normStr(s) }
+		// carregar membros (sem filtros da tabela)
+		let page=1; const per=500; const maxPages=20; const rows=[]
+		try{ while(page<=maxPages){ const r=await fetch(`/api/membros?page=${page}&per_page=${per}`, { headers:{ ...auth() } }); if(!r.ok) break; const d=await r.json(); const data=d.data||[]; rows.push(...data); if(data.length<per) break; page++ } }catch{}
+		if(!rows.length){ chart.clear(); document.getElementById('pinMsg').textContent='Sem dados.'; return }
+		// pontos por membro
+		const points=[]; const idToComarcaCenter={}; const idToName={}; let notMatched=0
+		for(const r of rows){ const nome=String(r.data['Membro']||r.data['Nome']||('#'+r.id)); const comarca=String(r.data['Comarca Lotação']||''); const center=resolveCenter(comarca); idToName[r.id]=nome; if(center){ idToComarcaCenter[r.id]=center; points.push({ name:nome, value:[center[0], center[1], 1], mid:r.id, municipio: comarca }) } else { notMatched++ } }
+		if(!points.length){ chart.clear(); document.getElementById('pinMsg').textContent='Sem correspondência de comarcas no mapa.'; return }
+		// aplicar filtro por membro
+		const q=(document.getElementById('pinFilter')?.value||'').trim(); const nq=normStr(q); let focusId=null
+		if(nq){ for(const [id,nm] of Object.entries(idToName)){ if(normStr(nm).includes(nq)){ focusId=Number(id); break } } }
+		const data = points.map(p=> ({ ...p, itemStyle: { color: (focusId && p.mid===focusId)? '#dc2626' : '#0ea5e9' }, symbolSize: (focusId && p.mid===focusId)? 12 : 8 }))
+		const center = focusId? (idToComarcaCenter[focusId]||null) : null
+		chart.setOption({
+			tooltip:{ formatter:(p)=>p.data?.name||'' },
+			geo:{ map:'mg_municipios', roam:true, zoom: (focusId? 6.2 : 5.5), center: center||undefined },
+			series:[{ type:'scatter', coordinateSystem:'geo', data, emphasis:{ itemStyle:{ color:'#ef4444' } } }]
+		})
+		document.getElementById('pinMsg').textContent = (focusId? 'Pino destacado em vermelho e mapa centralizado. ' : '') + (notMatched? `${notMatched} sem correspondência.` : '')
+		// clique no pino: abrir modal com info do município
+		chart.off('click')
+		chart.on('click', async (ev)=>{
+			const nmRaw = ev?.data?.municipio || ev?.data?.name || ''
+			const nm = sanitizeComarca(nmRaw)
+			if(!nm) return
+			if(!token()){ toast('Faça login para consultar municípios','error'); location.href='/login'; return }
+			let html = `<div class='row'><strong style='font-size:16px'>${nm}</strong></div><div id='munInfo' style='margin-top:8px'>Carregando...</div>`
+			const modalBody=document.getElementById('modalBody')
+			const btnSave=document.getElementById('btnSave'); if(btnSave) btnSave.style.display='none'
+			if(modalBody){ document.getElementById('modalTitle').textContent='Município'; modalBody.innerHTML=html; document.getElementById('modal').style.display='flex' }
+			try{
+				const r=await fetch(`/api/municipios/info?nome=${encodeURIComponent(nm)}&uf=MG`, { headers:{ ...auth() } })
+				if(r.status===401||r.status===422){ document.getElementById('munInfo').textContent='Sessão expirada. Redirecionando...'; setTimeout(()=>{ localStorage.removeItem('token'); location.href='/login' }, 900); return }
+				if(!r.ok){ document.getElementById('munInfo').textContent=`Falha ao consultar (${r.status})`; return }
+				const d=await r.json(); const info=d.data||{}
+				const linkIBGE = info.links?.ibge_cidades ? `<a href='${info.links.ibge_cidades}' target='_blank' rel='noopener'>IBGE Cidades</a>` : ''
+				document.getElementById('munInfo').innerHTML = `
+					<div class='row'><div><strong>UF:</strong> ${info.uf?.sigla||''} — ${info.uf?.nome||''}</div></div>
+					<div class='row'><div><strong>Região:</strong> ${info.regiao?.sigla||''} — ${info.regiao?.nome||''}</div></div>
+					<div class='row'><div><strong>Mesorregião:</strong> ${info.mesorregiao||''}</div></div>
+					<div class='row'><div><strong>Microrregião:</strong> ${info.microrregiao||''}</div></div>
+					<div class='row'><div>${linkIBGE}</div></div>
+				`
+			}catch(e){ document.getElementById('munInfo').textContent='Erro ao consultar' }
+		})
+	}
 	</script>
 </body>
 </html> 
