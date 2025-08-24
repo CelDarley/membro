@@ -4,6 +4,7 @@ from sqlalchemy import func
 from ..db import db
 from ..models import Membro
 import json
+import re
 
 bp = Blueprint('membros', __name__)
 
@@ -173,6 +174,24 @@ def stats_membros():
 	return {'total': total, 'female_count': female, 'female_pct': pct}
 
 
+def parse_int_or_none(value):
+	if value in (None, ''):
+		return None
+	try:
+		return int(str(value).strip())
+	except Exception:
+		return None
+
+
+def normalize_uf(value):
+	if not value:
+		return None
+	s = str(value).strip().upper()
+	# manter apenas letras e pegar as duas primeiras
+	letters = re.sub(r'[^A-Z]', '', s)
+	return (letters[:2] or None)
+
+
 @bp.post('/membros')
 @jwt_required()
 def create_membro():
@@ -194,17 +213,21 @@ def create_membro():
 		unidade_lotacao=data.get('Unidade Lotação'),
 		comarca_lotacao=data.get('Comarca Lotação'),
 		time_extraprofissionais=data.get('Time de futebol e outros grupos extraprofissionais'),
-		quantidade_filhos=(int(data.get('Quantidade de filhos')) if data.get('Quantidade de filhos') not in (None, '') else None),
+		quantidade_filhos=parse_int_or_none(data.get('Quantidade de filhos')),
 		nomes_filhos=data.get('Nome dos filhos'),
-		estado_origem=(data.get('Estado de origem')[:2] if data.get('Estado de origem') else None),
+		estado_origem=normalize_uf(data.get('Estado de origem')),
 		academico=data.get('Acadêmico'),
 		pretensao_carreira=data.get('Pretensão de movimentação na carreira'),
 		carreira_anterior=data.get('Carreira anterior'),
 		lideranca=data.get('Liderança'),
 		grupos_identitarios=data.get('Grupos identitários'),
 	)
-	db.session.add(m)
-	db.session.commit()
+	try:
+		db.session.add(m)
+		db.session.commit()
+	except Exception as e:
+		db.session.rollback()
+		return { 'message': f'Erro ao criar: {str(e)[:200]}' }, 422
 	# sincronizar amigos se enviados
 	raw = data.get('Amigos no MP (IDs)')
 	if raw is not None:
@@ -217,9 +240,13 @@ def create_membro():
 		if ids:
 			friends = Membro.query.filter(Membro.id.in_(ids)).all()
 			for f in friends:
-				if f.id != m.id:
+				if f.id != m.id and f not in m.amigos:
 					m.amigos.append(f)
-			db.session.commit()
+			try:
+				db.session.commit()
+			except Exception as e:
+				db.session.rollback()
+				return { 'message': f'Erro ao vincular amigos: {str(e)[:200]}' }, 422
 	return {'success': True, 'id': m.id}
 
 
@@ -230,48 +257,58 @@ def update_membro(id: int):
 	role = (claims.get('role') or '').lower()
 	if role != 'admin':
 		return { 'message': 'Apenas administradores podem editar registros.' }, 403
-	m = Membro.query.get_or_404(id)
-	data = (request.get_json() or {}).get('data') or {}
-	m.nome = data.get('Membro') or data.get('Nome') or m.nome
-	m.sexo = data.get('Sexo') or m.sexo
-	m.concurso = data.get('Concurso') or m.concurso
-	m.cargo_efetivo = data.get('Cargo efetivo') or m.cargo_efetivo
-	m.titularidade = data.get('Titularidade') or m.titularidade
-	m.email_pessoal = data.get('eMail pessoal') or m.email_pessoal
-	m.cargo_especial = data.get('Cargo Especial') or m.cargo_especial
-	m.telefone_unidade = data.get('Telefone Unidade') or m.telefone_unidade
-	m.telefone_celular = data.get('Telefone celular') or m.telefone_celular
-	m.unidade_lotacao = data.get('Unidade Lotação') or m.unidade_lotacao
-	m.comarca_lotacao = data.get('Comarca Lotação') or m.comarca_lotacao
-	m.time_extraprofissionais = data.get('Time de futebol e outros grupos extraprofissionais') or m.time_extraprofissionais
-	m.quantidade_filhos = (int(data.get('Quantidade de filhos')) if data.get('Quantidade de filhos') not in (None, '') else m.quantidade_filhos)
-	m.nomes_filhos = data.get('Nome dos filhos') or m.nomes_filhos
-	m.estado_origem = (data.get('Estado de origem')[:2] if data.get('Estado de origem') else m.estado_origem)
-	m.academico = data.get('Acadêmico') or m.academico
-	m.pretensao_carreira = data.get('Pretensão de movimentação na carreira') or m.pretensao_carreira
-	m.carreira_anterior = data.get('Carreira anterior') or m.carreira_anterior
-	m.lideranca = data.get('Liderança') or m.lideranca
-	m.grupos_identitarios = data.get('Grupos identitários') or m.grupos_identitarios
-	# sincronizar amigos
-	raw = data.get('Amigos no MP (IDs)')
-	if raw is not None:
-		new_ids = []
-		if isinstance(raw, list):
-			new_ids = [int(x) for x in raw if str(x).isdigit()]
-		elif isinstance(raw, str):
-			new_ids = [int(x) for x in raw.split(',') if x.strip().isdigit()]
-		new_ids = [fid for fid in new_ids if fid != m.id]
-		current_ids = set(a.id for a in m.amigos)
-		to_add = set(new_ids) - current_ids
-		to_remove = current_ids - set(new_ids)
-		if to_remove:
-			for f in list(m.amigos):
-				if f.id in to_remove:
-					m.amigos.remove(f)
-		if to_add:
-			friends = Membro.query.filter(Membro.id.in_(list(to_add))).all()
-			for f in friends:
-				if f.id != m.id:
-					m.amigos.append(f)
-	db.session.commit()
-	return {'success': True} 
+	try:
+		m = Membro.query.get_or_404(id)
+		data = (request.get_json() or {}).get('data') or {}
+		m.nome = data.get('Membro') or data.get('Nome') or m.nome
+		m.sexo = data.get('Sexo') or m.sexo
+		m.concurso = data.get('Concurso') or m.concurso
+		m.cargo_efetivo = data.get('Cargo efetivo') or m.cargo_efetivo
+		m.titularidade = data.get('Titularidade') or m.titularidade
+		m.email_pessoal = data.get('eMail pessoal') or m.email_pessoal
+		m.cargo_especial = data.get('Cargo Especial') or m.cargo_especial
+		m.telefone_unidade = data.get('Telefone Unidade') or m.telefone_unidade
+		m.telefone_celular = data.get('Telefone celular') or m.telefone_celular
+		m.unidade_lotacao = data.get('Unidade Lotação') or m.unidade_lotacao
+		m.comarca_lotacao = data.get('Comarca Lotação') or m.comarca_lotacao
+		m.time_extraprofissionais = data.get('Time de futebol e outros grupos extraprofissionais') or m.time_extraprofissionais
+		qf = data.get('Quantidade de filhos')
+		m.quantidade_filhos = parse_int_or_none(qf) if qf not in (None, '') else m.quantidade_filhos
+		m.nomes_filhos = data.get('Nome dos filhos') or m.nomes_filhos
+		uf = data.get('Estado de origem')
+		m.estado_origem = normalize_uf(uf) if uf not in (None, '') else m.estado_origem
+		m.academico = data.get('Acadêmico') or m.academico
+		m.pretensao_carreira = data.get('Pretensão de movimentação na carreira') or m.pretensao_carreira
+		m.carreira_anterior = data.get('Carreira anterior') or m.carreira_anterior
+		m.lideranca = data.get('Liderança') or m.lideranca
+		m.grupos_identitarios = data.get('Grupos identitários') or m.grupos_identitarios
+		# sincronizar amigos
+		raw = data.get('Amigos no MP (IDs)')
+		if raw is not None:
+			new_ids = []
+			if isinstance(raw, list):
+				new_ids = [int(x) for x in raw if str(x).isdigit()]
+			elif isinstance(raw, str):
+				new_ids = [int(x) for x in raw.split(',') if x.strip().isdigit()]
+			new_ids = [fid for fid in new_ids if fid != m.id]
+			current = m.amigos.all()
+			current_ids = set(a.id for a in current)
+			to_add = set(new_ids) - current_ids
+			to_remove = current_ids - set(new_ids)
+			if to_remove:
+				for f in current:
+					if f.id in to_remove:
+						m.amigos.remove(f)
+			if to_add:
+				friends = Membro.query.filter(Membro.id.in_(list(to_add))).all()
+				for f in friends:
+					if f.id != m.id and f not in m.amigos:
+						m.amigos.append(f)
+		try:
+			db.session.commit()
+		except Exception as e:
+			db.session.rollback()
+			return { 'message': f'Erro ao salvar: {str(e)[:200]}' }, 422
+		return {'success': True}
+	except Exception as e:
+		return { 'message': f'Erro ao processar: {str(e)[:200]}' }, 422 
